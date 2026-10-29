@@ -9,6 +9,9 @@ case "$mode" in
   *) echo "Usage: bash scripts/deploy.sh [dev|prod|edge]" >&2; exit 2 ;;
 esac
 if [[ ! -f .env ]]; then echo "First run: bash scripts/init-env.sh" >&2; exit 1; fi
+if [[ "$mode" == prod ]]; then
+  bash scripts/detect-public-ip.sh
+fi
 if [[ "$mode" == prod && ! -s nginx/generated/default.conf ]]; then
   bash scripts/setup-ssl.sh
 fi
