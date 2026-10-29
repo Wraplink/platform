@@ -26,7 +26,7 @@ Services are cloned into `services/` (ignored by Git). For a single-host product
 bash scripts/deploy.sh prod
 ```
 
-Production publishes Web, Backend and the DNS API on loopback, but DNS port 53 publicly. Configure a trusted HTTPS reverse proxy (Nginx/Caddy) **outside** this compose stack for 443, certificate renewal, and proxying only appropriate paths to Web. Do not publicly expose the backend control APIs or DNS API. Review ACLs, firewall, TLS, backups, and secrets before internet exposure. Production is a **starting configuration, not a hardened, fully tested production deployment**.
+Production publishes Web, Backend and the DNS API on loopback, but DNS port 53 publicly. Nginx is included in production Compose for TLS offload and forwards requests to Web over the private Docker network. Before the first production start, obtain a certificate using `bash scripts/issue-cert.sh wraplink.ir ops@example.com` (replace with your actual email), and ensure the domain points to the server and TCP port 80 is reachable. Nginx will fail to start without certificate files. The current configuration targets `wraplink.ir`; adjust the Nginx configuration and certificate issuance for additional hostnames. Automate certificate renewal and Nginx reload before production use. Do not publicly expose the backend control APIs or DNS API. Review ACLs, firewall, TLS, backups, and secrets before internet exposure. Production is a **starting configuration, not a hardened, fully tested production deployment**.
 
 ### Edge host
 
@@ -46,3 +46,14 @@ Web uses same-origin browser requests and `BACKEND_INTERNAL_URL=http://backend:7
 - DNS Control needs a securely shared agent token; ensure Edge Agent uses the matching token in `DNS_CONTROL_API_TOKEN` on the edge host.
 - Real Edge Agent full-route forwarding requires assigning IP addresses to the host and configuring capacities/routes correctly.
 - Production app readiness, live external DNS behavior, TLS proxying, NAT/iptables/nftables interactions and end-to-end smoke tests must be verified on the actual servers.
+
+### HTTPS / TLS offload
+
+Nginx publishes TCP 80/443, redirects normal HTTP traffic to HTTPS, and proxies requests to the Web container. The Go backend remains internal behind Next.js. Certificate files are mounted from `./letsencrypt`; obtain the initial certificate *before* `bash scripts/deploy.sh prod`:
+
+```bash
+bash scripts/issue-cert.sh wraplink.ir admin@example.com
+bash scripts/deploy.sh prod
+```
+
+The issuance script uses a standalone ACME HTTP-01 challenge and needs exclusive access to port 80. Stop other port-80 listeners first. Renew certificates with Certbot and reload Nginx (`docker compose -f compose.yml -f compose.prod.yml exec nginx nginx -s reload`); renewal automation is not included yet. Do not publish DNS Control's administrative API publicly. Set `FRONTEND_URL=https://wraplink.ir`, `APP_ENV=production`, and `SECURE_COOKIES=true` in `.env`.
