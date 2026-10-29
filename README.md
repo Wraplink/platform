@@ -57,3 +57,7 @@ bash scripts/deploy.sh prod
 ```
 
 The issuance script uses a standalone ACME HTTP-01 challenge and needs exclusive access to port 80. Stop other port-80 listeners first. Renew certificates with Certbot and reload Nginx (`docker compose -f compose.yml -f compose.prod.yml exec nginx nginx -s reload`); renewal automation is not included yet. Do not publish DNS Control's administrative API publicly. Set `FRONTEND_URL=https://wraplink.ir`, `APP_ENV=production`, and `SECURE_COOKIES=true` in `.env`.
+
+### Interactive domain configuration
+
+On the first production start, `bash scripts/deploy.sh prod` prompts for a primary domain, optional additional domains and a Let's Encrypt contact email. It issues certificates using standalone HTTP-01 (port 80 must be free) and generates the Nginx configuration. For subsequent changes use `bash scripts/setup-ssl.sh` (stop Nginx first if it holds port 80), then restart Nginx. Renew with `bash scripts/renew-ssl.sh` while Nginx is running. Schedule renewal separately using cron/systemd; no timer is installed automatically. 
