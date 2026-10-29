@@ -46,3 +46,11 @@ Web uses same-origin browser requests and `BACKEND_INTERNAL_URL=http://backend:7
 - DNS Control needs a securely shared agent token; ensure Edge Agent uses the matching token in `DNS_CONTROL_API_TOKEN` on the edge host.
 - Real Edge Agent full-route forwarding requires assigning IP addresses to the host and configuring capacities/routes correctly.
 - Production app readiness, live external DNS behavior, TLS proxying, NAT/iptables/nftables interactions and end-to-end smoke tests must be verified on the actual servers.
+
+## Interactive production HTTPS setup
+
+Run `bash scripts/deploy.sh prod`. On first run, the setup prompts for the primary domain, optional additional domains, and Let's Encrypt contact email, confirms DNS/port 80 readiness, issues an HTTP-01 certificate, and generates `nginx/generated/default.conf` (ignored by Git). This is intended for public DNS names, not localhost or private IP addresses.
+
+To reconfigure domains, run `bash scripts/setup-ssl.sh` again, then `docker compose -f compose.yml -f compose.prod.yml restart nginx`. Initial issuance uses standalone port 80; stop the running Nginx service first if necessary. All names must resolve to the server and inbound TCP 80/443 must be allowed.
+
+Renew while Nginx is running with `bash scripts/renew-ssl.sh`. It uses webroot challenges and reloads Nginx after renewal. Schedule it with a host systemd timer or cron; automated scheduling is not installed. Certbot must be able to write into `./letsencrypt` and `./www/certbot`. Always set `FRONTEND_URL` and secure cookie settings in `.env` to match the primary HTTPS domain. Never commit generated certificate material.
