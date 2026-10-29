@@ -5,3 +5,6 @@ secrets/
 *.log
 .DS_Store
 services/
+nginx/generated/
+letsencrypt/
+www/certbot/
