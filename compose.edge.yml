@@ -1,0 +1,18 @@
+# Optional: deploy ONLY on dedicated edge hosts with correctly provisioned public IPv4.
+# This service requires host networking and NET_ADMIN; never enable by default.
+services:
+  edge-agent:
+    build:
+      context: ./services/edge-agent
+      dockerfile: Dockerfile
+    network_mode: host
+    cap_add: [NET_ADMIN, NET_RAW]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DNS_CONTROL_API_URL: ${DNS_CONTROL_API_URL:?set external DNS_CONTROL_API_URL}
+      DNS_CONTROL_API_TOKEN: ${DNS_CONTROL_API_TOKEN:?set DNS_CONTROL_API_TOKEN}
+      WRAPLINK_BACKEND_URL: ${WRAPLINK_BACKEND_URL:?set external WRAPLINK_BACKEND_URL}
+      NETWORK_CONTROL_KEY: ${NETWORK_CONTROL_SYNC_KEY:?set NETWORK_CONTROL_SYNC_KEY}
+    volumes:
+      - ./config/edge-agent.yml:/etc/edge-agent/config.yml:ro

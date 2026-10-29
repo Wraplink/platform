@@ -1,0 +1,92 @@
+name: wraplink
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [private]
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    restart: "no"
+    volumes:
+      - ./services/backend/migrations:/migrations:ro
+    entrypoint: ["/migrate"]
+    command: ["-path", "/migrations", "-database", "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable", "up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+
+  backend:
+    build:
+      context: ./services/backend
+      dockerfile: ../../docker/go.Dockerfile
+      args:
+        MAIN_PACKAGE: ./cmd/api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      APP_ENV: ${APP_ENV:-development}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      DNS_CONTROL_API_URL: http://dns-control:8080
+      DNS_CONTROL_API_TOKEN: ${DNS_CONTROL_API_TOKEN:?set DNS_CONTROL_API_TOKEN}
+    volumes:
+      - ./config/backend.yml:/etc/wraplink/backend.yml:ro
+    command: ["-config", "/etc/wraplink/backend.yml"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [private]
+
+  dns-control:
+    build:
+      context: ./services/dns-control
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DNS_LISTEN: ":53"
+      DNS_UPSTREAM: ${DNS_UPSTREAM:-1.1.1.1:53,8.8.8.8:53}
+      API_LISTEN: ":8080"
+      WRAPLINK_BACKEND_URL: http://backend:7080
+      NETWORK_CONTROL_SYNC_KEY: ${NETWORK_CONTROL_SYNC_KEY:?set NETWORK_CONTROL_SYNC_KEY}
+    volumes:
+      - ./config/dns-control.yaml:/etc/dns-control/config.yaml:ro
+    depends_on:
+      backend:
+        condition: service_started
+    networks: [private]
+
+  web:
+    build:
+      context: ./services/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ""
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      BACKEND_INTERNAL_URL: http://backend:7080
+      BACKEND_PROXY_TRUST_NEXT_FORWARDED_FOR: "false"
+      NEXT_PUBLIC_API_BASE_URL: ""
+    depends_on:
+      backend:
+        condition: service_started
+    networks: [private]
+volumes:
+  pgdata:
+networks:
+  private:
+    driver: bridge
