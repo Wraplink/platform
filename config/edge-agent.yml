@@ -1,0 +1,30 @@
+dns_control:
+  url: ${DNS_CONTROL_API_URL}
+  token: ${DNS_CONTROL_API_TOKEN}
+backend:
+  url: ${WRAPLINK_BACKEND_URL}
+  control_key: ${NETWORK_CONTROL_KEY}
+  route_public_ips: []
+agent:
+  id: "${EDGE_ID}"
+  region: "${EDGE_REGION}"
+  interval: 10s
+  capacity:
+    sni: 100
+    route: 0
+edge:
+  local_output_dnat: false
+  upstream_dns:
+    - "1.1.1.1:53"
+    - "8.8.8.8:53"
+  addresses:
+    - "127.0.0.1"
+  sni:
+    enabled: false
+    listen_address: "127.0.0.1:8443"
+    max_connections: 1024
+    client_hello_timeout: 5s
+diagnostics:
+  enabled: false
+  listen_address: "127.0.0.1:9091"
+  token: ""

@@ -1,0 +1,23 @@
+dns:
+  listen: ${DNS_LISTEN}
+  upstream: [${DNS_UPSTREAM}]
+  ttl: 30
+  allow_loopback_queries: true
+api:
+  listen: ${API_LISTEN}
+agent:
+  token: "${DNS_CONTROL_AGENT_TOKEN}"
+  lease_duration: 30s
+  offline_after: 45s
+  reconcile_interval: 5s
+backend:
+  url: ${WRAPLINK_BACKEND_URL}
+  control_key: ${NETWORK_CONTROL_SYNC_KEY}
+  entitlement_refresh_interval: 10s
+  entitlement_max_stale: 1m
+node:
+  id: "${NODE_ID}"
+  region: "${NODE_REGION}"
+  public_dns:
+    - "${NODE_PUBLIC_IP}"
+  register_interval: 15s

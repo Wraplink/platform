@@ -1,0 +1,18 @@
+services:
+  postgres:
+    # Production database stays on the internal Docker network.
+    ports: !reset []
+  backend:
+    environment:
+      APP_ENV: production
+      FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-7080}:7080"
+  dns-control:
+    ports:
+      - "${DNS_PORT:-53}:53/udp"
+      - "${DNS_PORT:-53}:53/tcp"
+      - "127.0.0.1:${DNS_API_PORT:-8080}:8080"
+  web:
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
