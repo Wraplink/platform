@@ -7,3 +7,4 @@ secrets/
 services/
 letsencrypt/
 www/certbot/
+nginx/generated/
