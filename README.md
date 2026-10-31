@@ -66,20 +66,23 @@ On the first production start, `bash scripts/deploy.sh prod` prompts for a prima
 
 Production backend requires outbound SMTP; no inbound mail server or SMTP container is needed. The backend reads SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM from the backend container environment (Compose already uses `env_file: .env`). Configure these in .env before deployment and recreate backend after changes.
 
-For Google Workspace sending as `no-reply@wraplink.ir`, provision the mailbox or an authorized send-as alias and use:
+For **free transactional email**, use Brevo's free plan (currently 300 emails/day, no credit card required). Register at https://www.brevo.com, add and authenticate `wraplink.ir` as a sending domain, create an SMTP key in Settings > SMTP & API, and configure:
+
 ```dotenv
-SMTP_HOST=smtp.gmail.com
+SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587
-SMTP_USERNAME=no-reply@wraplink.ir
-SMTP_PASSWORD=YOUR_GOOGLE_APP_PASSWORD
+SMTP_USERNAME=YOUR_BREVO_SMTP_LOGIN
+SMTP_PASSWORD=YOUR_BREVO_SMTP_KEY
 SMTP_FROM=no-reply@wraplink.ir
 ```
-Use a Google App Password where supported with 2-step verification; never use the normal account password. For high-volume production mail, prefer a dedicated transactional provider with domain authentication.
 
-If Google Workspace receives mail for wraplink.ir, configure the domain's Google Workspace MX record using the current Google Admin setup instructions. For **outbound** authenticated mail, configure one SPF TXT record for the domain (include:_spf.google.com if Google is the sole sender), enable DKIM in Google Workspace Admin and publish the selector TXT record provided there, and publish a DMARC TXT record at `_dmarc.wraplink.ir`. Start with `v=DMARC1; p=none; rua=mailto:dmarc@wraplink.ir` only if that reporting mailbox exists; review reports before enforcing quarantine/reject. Do not publish duplicate SPF records or invent a DKIM public key.
+Use the SMTP login and SMTP key shown in Brevo; the SMTP key is **not** the Brevo account password or API key. Sending from `no-reply@wraplink.ir` requires verifying the sender/domain with Brevo, but does not require buying Google Workspace or hosting an inbox.
 
-Example SPF (Google Workspace only):
-```text
-wraplink.ir TXT "v=spf1 include:_spf.google.com ~all"
-```
+**DNS for Brevo:** In Brevo > Settings > Senders, Domains, IPs > Domains, add `wraplink.ir`, choose manual authentication, and copy the **exact** records supplied there: a Brevo verification TXT record, DKIM (one TXT or two CNAMEs), and a DMARC TXT record. For initial DMARC monitoring use the value Brevo provides (typically `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com`). Brevo states SPF and MX records are not required for its standard shared-IP domain authentication; do not add Google's SPF or MX records just for sending. Do not publish multiple DMARC records. Check authentication status before sending.
+
+Brevo references:
+- https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP
+- https://help.brevo.com/hc/en-us/articles/12163873383186-Authenticate-your-domain-with-Brevo-Brevo-code-DKIM-DMARC
+- https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan
+
 No changes to the website A/AAAA records are required for SMTP submission via Google. A self-hosted mail server would additionally need a dedicated sending IP, matching PTR/rDNS and A records, queue management, anti-abuse controls, and deliverability monitoring; it is not enabled here.
