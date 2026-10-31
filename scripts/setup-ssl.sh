@@ -25,8 +25,12 @@ echo "Port 80 must be free during initial issuance."
 docker run --rm -p 80:80 -v "$PWD/letsencrypt:/etc/letsencrypt" -v "$PWD/www/certbot:/var/www/certbot" certbot/certbot:v3.3.0 certonly --standalone --preferred-challenges http --agree-tos --non-interactive --email "$EMAIL" --cert-name "$DOMAIN" "${args[@]}"
 # Publish TLS configuration only after issuance succeeds. A failed challenge
 # must not leave a 443 vhost referencing certificates that do not exist.
-[[ -s "letsencrypt/live/$DOMAIN/fullchain.pem" && -s "letsencrypt/live/$DOMAIN/privkey.pem" ]] || {
-  echo "Certificate files are missing after issuance" >&2
+docker run --rm \
+  -v "$PWD/letsencrypt:/etc/letsencrypt:ro" \
+  --entrypoint /bin/sh certbot/certbot:v3.3.0 \
+  -c 'test -s "/etc/letsencrypt/live/$1/fullchain.pem" && test -s "/etc/letsencrypt/live/$1/privkey.pem"' \
+  sh "$DOMAIN" || {
+  echo "Certificate files are missing or unreadable inside the certificate volume" >&2
   exit 1
 }
 {
