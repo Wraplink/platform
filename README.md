@@ -66,23 +66,22 @@ On the first production start, `bash scripts/deploy.sh prod` prompts for a prima
 
 Production backend requires outbound SMTP; no inbound mail server or SMTP container is needed. The backend reads SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM from the backend container environment (Compose already uses `env_file: .env`). Configure these in .env before deployment and recreate backend after changes.
 
-For **free transactional email**, use Brevo's free plan (currently 300 emails/day, no credit card required). Register at https://www.brevo.com, add and authenticate `wraplink.ir` as a sending domain, create an SMTP key in Settings > SMTP & API, and configure:
+For **free transactional email supporting Iranian customers**, evaluate **Mailerever**. Its published free tier includes 3,000 emails/month, SMTP/API, transactional mail and up to 5 domains. Confirm account approval and actual delivery to Gmail/Outlook before production.
 
+- Pricing: https://mailerever.com/fa/email-price-fa
+- SMTP documentation example: https://mailerever.com/fa
+
+Example configuration (replace with credentials from the provider's panel):
 ```dotenv
-SMTP_HOST=smtp-relay.brevo.com
+SMTP_HOST=send.mailerever.net
 SMTP_PORT=587
-SMTP_USERNAME=YOUR_BREVO_SMTP_LOGIN
-SMTP_PASSWORD=YOUR_BREVO_SMTP_KEY
+SMTP_USERNAME=YOUR_MAILEREVER_SMTP_USERNAME
+SMTP_PASSWORD=YOUR_MAILEREVER_SMTP_PASSWORD
 SMTP_FROM=no-reply@wraplink.ir
 ```
 
-Use the SMTP login and SMTP key shown in Brevo; the SMTP key is **not** the Brevo account password or API key. Sending from `no-reply@wraplink.ir` requires verifying the sender/domain with Brevo, but does not require buying Google Workspace or hosting an inbox.
+Add `wraplink.ir` to the provider dashboard and publish the exact domain-verification, SPF, DKIM and DMARC records it supplies. Do not copy SPF or DKIM settings from another provider. MX records are not required merely to send mail.
 
-**DNS for Brevo:** In Brevo > Settings > Senders, Domains, IPs > Domains, add `wraplink.ir`, choose manual authentication, and copy the **exact** records supplied there: a Brevo verification TXT record, DKIM (one TXT or two CNAMEs), and a DMARC TXT record. For initial DMARC monitoring use the value Brevo provides (typically `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com`). Brevo states SPF and MX records are not required for its standard shared-IP domain authentication; do not add Google's SPF or MX records just for sending. Do not publish multiple DMARC records. Check authentication status before sending.
-
-Brevo references:
-- https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP
-- https://help.brevo.com/hc/en-us/articles/12163873383186-Authenticate-your-domain-with-Brevo-Brevo-code-DKIM-DMARC
-- https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan
+Alternatives serving Iranian businesses include Mailerino (SMTP/API with rial payments, but no confirmed perpetual free allowance) and Liara (SMTP email service; current paid plans shown on its pricing page). A self-hosted Postfix relay is another option but requires outbound port 25, dedicated IP, PTR/rDNS, SPF, DKIM, DMARC, queue monitoring and reputation management.
 
 No changes to the website A/AAAA records are required for SMTP submission via Google. A self-hosted mail server would additionally need a dedicated sending IP, matching PTR/rDNS and A records, queue management, anti-abuse controls, and deliverability monitoring; it is not enabled here.
