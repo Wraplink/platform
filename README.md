@@ -61,3 +61,27 @@ The issuance script uses a standalone ACME HTTP-01 challenge and needs exclusive
 ### Interactive domain configuration
 
 On the first production start, `bash scripts/deploy.sh prod` prompts for a primary domain, optional additional domains and a Let's Encrypt contact email. It issues certificates using standalone HTTP-01 (port 80 must be free) and generates the Nginx configuration. For subsequent changes use `bash scripts/setup-ssl.sh` (stop Nginx first if it holds port 80), then restart Nginx. Renew with `bash scripts/renew-ssl.sh` while Nginx is running. Schedule renewal separately using cron/systemd; no timer is installed automatically. 
+
+### Registration and transactional email
+
+Production backend requires outbound SMTP; no inbound mail server or SMTP container is needed. The backend reads SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM from the backend container environment (Compose already uses `env_file: .env`). Configure these in .env before deployment and recreate backend after changes.
+
+For **free transactional email supporting Iranian customers**, evaluate **Mailerever**. Its published free tier includes 3,000 emails/month, SMTP/API, transactional mail and up to 5 domains. Confirm account approval and actual delivery to Gmail/Outlook before production.
+
+- Pricing: https://mailerever.com/fa/email-price-fa
+- SMTP documentation example: https://mailerever.com/fa
+
+Example configuration (replace with credentials from the provider's panel):
+```dotenv
+SMTP_HOST=send.mailerever.net
+SMTP_PORT=587
+SMTP_USERNAME=YOUR_MAILEREVER_SMTP_USERNAME
+SMTP_PASSWORD=YOUR_MAILEREVER_SMTP_PASSWORD
+SMTP_FROM=no-reply@wraplink.ir
+```
+
+Add `wraplink.ir` to the provider dashboard and publish the exact domain-verification, SPF, DKIM and DMARC records it supplies. Do not copy SPF or DKIM settings from another provider. MX records are not required merely to send mail.
+
+Alternatives serving Iranian businesses include Mailerino (SMTP/API with rial payments, but no confirmed perpetual free allowance) and Liara (SMTP email service; current paid plans shown on its pricing page). A self-hosted Postfix relay is another option but requires outbound port 25, dedicated IP, PTR/rDNS, SPF, DKIM, DMARC, queue monitoring and reputation management.
+
+No changes to the website A/AAAA records are required for SMTP submission via Google. A self-hosted mail server would additionally need a dedicated sending IP, matching PTR/rDNS and A records, queue management, anti-abuse controls, and deliverability monitoring; it is not enabled here.
