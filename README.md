@@ -61,3 +61,25 @@ The issuance script uses a standalone ACME HTTP-01 challenge and needs exclusive
 ### Interactive domain configuration
 
 On the first production start, `bash scripts/deploy.sh prod` prompts for a primary domain, optional additional domains and a Let's Encrypt contact email. It issues certificates using standalone HTTP-01 (port 80 must be free) and generates the Nginx configuration. For subsequent changes use `bash scripts/setup-ssl.sh` (stop Nginx first if it holds port 80), then restart Nginx. Renew with `bash scripts/renew-ssl.sh` while Nginx is running. Schedule renewal separately using cron/systemd; no timer is installed automatically. 
+
+### Registration and transactional email
+
+Production backend requires outbound SMTP; no inbound mail server or SMTP container is needed. The backend reads SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM from the backend container environment (Compose already uses `env_file: .env`). Configure these in .env before deployment and recreate backend after changes.
+
+For Google Workspace sending as `no-reply@wraplink.ir`, provision the mailbox or an authorized send-as alias and use:
+```dotenv
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=no-reply@wraplink.ir
+SMTP_PASSWORD=YOUR_GOOGLE_APP_PASSWORD
+SMTP_FROM=no-reply@wraplink.ir
+```
+Use a Google App Password where supported with 2-step verification; never use the normal account password. For high-volume production mail, prefer a dedicated transactional provider with domain authentication.
+
+If Google Workspace receives mail for wraplink.ir, configure the domain's Google Workspace MX record using the current Google Admin setup instructions. For **outbound** authenticated mail, configure one SPF TXT record for the domain (include:_spf.google.com if Google is the sole sender), enable DKIM in Google Workspace Admin and publish the selector TXT record provided there, and publish a DMARC TXT record at `_dmarc.wraplink.ir`. Start with `v=DMARC1; p=none; rua=mailto:dmarc@wraplink.ir` only if that reporting mailbox exists; review reports before enforcing quarantine/reject. Do not publish duplicate SPF records or invent a DKIM public key.
+
+Example SPF (Google Workspace only):
+```text
+wraplink.ir TXT "v=spf1 include:_spf.google.com ~all"
+```
+No changes to the website A/AAAA records are required for SMTP submission via Google. A self-hosted mail server would additionally need a dedicated sending IP, matching PTR/rDNS and A records, queue management, anti-abuse controls, and deliverability monitoring; it is not enabled here.
