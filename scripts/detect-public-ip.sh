@@ -57,8 +57,10 @@ for endpoint in endpoints:
 if observations:
     from collections import Counter
     detected, votes = Counter(observations).most_common(1)[0]
+    if votes < 2:
+        sys.exit("Public IPv4 could not be confirmed by at least two external observers: " + ", ".join(observations) + ". Configure NODE_PUBLIC_IP_MODE=manual with your inbound public IPv4.")
     if len(set(observations)) > 1:
-        sys.exit("External public IP observers disagree: " + ", ".join(observations) + ". Configure NODE_PUBLIC_IP_MODE=manual with your inbound public IPv4.")
+        print("WARNING: External IP observers disagree: " + ", ".join(observations) + "; using majority-confirmed " + detected, file=sys.stderr)
 else:
     sys.exit("Public IPv4 detection failed. Set NODE_PUBLIC_IP_MODE=manual and NODE_PUBLIC_IP=<inbound-public-IP> in .env")
 
