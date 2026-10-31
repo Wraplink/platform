@@ -17,6 +17,18 @@ printf 'Domains: %s\nEmail: %s\n' "${DOMAINS[*]}" "$EMAIL"
 read -r -p "DNS A/AAAA records point here and port 80 is reachable? [y/N]: " YES
 [[ "$YES" =~ ^[yY]$ ]] || exit 1
 mkdir -p nginx/generated letsencrypt www/certbot
+
+args=()
+for d in "${DOMAINS[@]}"; do args+=(-d "$d"); done
+echo "Issuing certificates using Let's Encrypt HTTP-01 standalone challenge."
+echo "Port 80 must be free during initial issuance."
+docker run --rm -p 80:80 -v "$PWD/letsencrypt:/etc/letsencrypt" -v "$PWD/www/certbot:/var/www/certbot" certbot/certbot:v3.3.0 certonly --standalone --preferred-challenges http --agree-tos --non-interactive --email "$EMAIL" --cert-name "$DOMAIN" "${args[@]}"
+# Publish TLS configuration only after issuance succeeds. A failed challenge
+# must not leave a 443 vhost referencing certificates that do not exist.
+[[ -s "letsencrypt/live/$DOMAIN/fullchain.pem" && -s "letsencrypt/live/$DOMAIN/privkey.pem" ]] || {
+  echo "Certificate files are missing after issuance" >&2
+  exit 1
+}
 {
   cat <<'CONF'
 server {
@@ -52,9 +64,4 @@ CONF
 }
 CONF
 } > nginx/generated/default.conf
-args=()
-for d in "${DOMAINS[@]}"; do args+=(-d "$d"); done
-echo "Issuing certificates using Let's Encrypt HTTP-01 standalone challenge."
-echo "Port 80 must be free during initial issuance."
-docker run --rm -p 80:80 -v "$PWD/letsencrypt:/etc/letsencrypt" -v "$PWD/www/certbot:/var/www/certbot" certbot/certbot:v3.3.0 certonly --standalone --preferred-challenges http --agree-tos --non-interactive --email "$EMAIL" --cert-name "$DOMAIN" "${args[@]}"
 echo "Certificate ready. Start production with: bash scripts/deploy.sh prod"
