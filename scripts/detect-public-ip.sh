@@ -37,12 +37,12 @@ if mode == "manual":
     print("Using manually configured NODE_PUBLIC_IP=" + current)
     sys.exit(0)
 
-if current and current not in ("127.0.0.1", "0.0.0.0", "auto") and valid_public(current):
-    print("Keeping explicitly configured NODE_PUBLIC_IP=" + current + " (set NODE_PUBLIC_IP=auto to refresh)")
-    sys.exit(0)
+# In auto mode always check external observers. A previously stored address
+# may be stale after a NAT/firewall or upstream routing change.
 
 endpoints = ("https://api.ipify.org", "https://ipv4.icanhazip.com", "https://checkip.amazonaws.com")
 detected = None
+observations = []
 for endpoint in endpoints:
     try:
         result = subprocess.run(
@@ -50,12 +50,16 @@ for endpoint in endpoints:
             capture_output=True, text=True, timeout=10, check=True)
         candidate = result.stdout.strip()
         if valid_public(candidate):
-            detected = candidate
-            break
+            observations.append(candidate)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         pass
 
-if not detected:
+if observations:
+    from collections import Counter
+    detected, votes = Counter(observations).most_common(1)[0]
+    if len(set(observations)) > 1:
+        sys.exit("External public IP observers disagree: " + ", ".join(observations) + ". Configure NODE_PUBLIC_IP_MODE=manual with your inbound public IPv4.")
+else:
     sys.exit("Public IPv4 detection failed. Set NODE_PUBLIC_IP_MODE=manual and NODE_PUBLIC_IP=<inbound-public-IP> in .env")
 
 print("Detected outbound public IPv4: " + detected)
