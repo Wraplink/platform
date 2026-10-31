@@ -20,9 +20,21 @@ mkdir -p nginx/generated letsencrypt www/certbot
 
 args=()
 for d in "${DOMAINS[@]}"; do args+=(-d "$d"); done
-echo "Issuing certificates using Let's Encrypt HTTP-01 standalone challenge."
-echo "Port 80 must be free during initial issuance."
-docker run --rm -p 80:80 -v "$PWD/letsencrypt:/etc/letsencrypt" -v "$PWD/www/certbot:/var/www/certbot" certbot/certbot:v3.3.0 certonly --standalone --preferred-challenges http --agree-tos --non-interactive --email "$EMAIL" --cert-name "$DOMAIN" "${args[@]}"
+# A successful prior issuance must not bind port 80 again.
+# Check inside the Certbot container because certificate directories are root-owned.
+if docker run --rm \
+  -v "$PWD/letsencrypt:/etc/letsencrypt:ro" \
+  --entrypoint /bin/sh certbot/certbot:v3.3.0 \
+  -c 'test -s "/etc/letsencrypt/live/$1/fullchain.pem" && test -s "/etc/letsencrypt/live/$1/privkey.pem"' \
+  sh "$DOMAIN"; then
+  echo "Reusing existing Let's Encrypt certificate for $DOMAIN."
+else
+  echo "No existing certificate found; issuing with standalone HTTP-01."
+  echo "Port 80 must be free during initial issuance."
+  docker run --rm -p 80:80 -v "$PWD/letsencrypt:/etc/letsencrypt" -v "$PWD/www/certbot:/var/www/certbot" certbot/certbot:v3.3.0 certonly --standalone --preferred-challenges http --agree-tos --non-interactive --email "$EMAIL" --cert-name "$DOMAIN" "${args[@]}"
+fi
+# Verify certificate files exist before publishing Nginx configuration.
+# The check is performed inside Docker to accommodate root-owned directories.
 # Publish TLS configuration only after issuance succeeds. A failed challenge
 # must not leave a 443 vhost referencing certificates that do not exist.
 docker run --rm \
