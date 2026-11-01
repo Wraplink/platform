@@ -53,6 +53,34 @@ postconf -e "milter_protocol = 6"
 postconf -e "smtpd_milters = inet:127.0.0.1:8891"
 postconf -e "non_smtpd_milters = inet:127.0.0.1:8891"
 postconf -e "maillog_file = /dev/stdout"
+
+case "${MAIL_PROXY_ENABLED:-false}" in
+  true)
+    : "${MAIL_PROXY_HOST:?MAIL_PROXY_HOST is required}"
+    : "${MAIL_PROXY_PORT:?MAIL_PROXY_PORT is required}"
+    case "$MAIL_PROXY_HOST" in *[!a-zA-Z0-9.:-]*|'') echo "invalid MAIL_PROXY_HOST" >&2; exit 1;; esac
+    case "$MAIL_PROXY_PORT" in *[!0-9]*|'') echo "invalid MAIL_PROXY_PORT" >&2; exit 1;; esac
+    umask 077
+    {
+      printf '%s\n' 'strict_chain' 'tcp_read_time_out 15000' 'tcp_connect_time_out 10000' '[ProxyList]'
+      if [ -n "${MAIL_PROXY_USERNAME:-}" ] || [ -n "${MAIL_PROXY_PASSWORD:-}" ]; then
+        [ -n "${MAIL_PROXY_USERNAME:-}" ] && [ -n "${MAIL_PROXY_PASSWORD:-}" ] || { echo "both proxy credentials required" >&2; exit 1; }
+        printf 'socks5 %s %s %s %s\n' "$MAIL_PROXY_HOST" "$MAIL_PROXY_PORT" "$MAIL_PROXY_USERNAME" "$MAIL_PROXY_PASSWORD"
+      else
+        printf 'socks5 %s %s\n' "$MAIL_PROXY_HOST" "$MAIL_PROXY_PORT"
+      fi
+    } > /etc/proxychains4-mail.conf
+    cat > /usr/local/bin/mail-smtp-proxied <<'EOF'
+#!/bin/sh
+exec /usr/bin/proxychains4 -q -f /etc/proxychains4-mail.conf /usr/lib/postfix/sbin/smtp "$@"
+EOF
+    chmod 755 /usr/local/bin/mail-smtp-proxied
+    postconf -M "smtp/unix=smtp unix - - y - - /usr/local/bin/mail-smtp-proxied"
+    echo "Outbound SMTP SOCKS5 proxy enabled"
+    ;;
+  false) echo "Outbound SMTP direct delivery enabled" ;;
+  *) echo "MAIL_PROXY_ENABLED must be true or false" >&2; exit 1 ;;
+esac
 # Only start SMTP after the DKIM signer is running.
 opendkim -x /etc/opendkim.conf -f &
 dkim_pid=$!
