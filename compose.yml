@@ -67,6 +67,11 @@ services:
       MAIL_DOMAIN: ${MAIL_DOMAIN:-wraplink.ir}
       MAIL_HOSTNAME: ${MAIL_HOSTNAME:-mail.wraplink.ir}
       MAIL_ALLOWED_NETWORK: 172.30.91.0/24
+      MAIL_PROXY_ENABLED: ${MAIL_PROXY_ENABLED:-false}
+      MAIL_PROXY_HOST: ${MAIL_PROXY_HOST:-}
+      MAIL_PROXY_PORT: ${MAIL_PROXY_PORT:-1080}
+      MAIL_PROXY_USERNAME: ${MAIL_PROXY_USERNAME:-}
+      MAIL_PROXY_PASSWORD: ${MAIL_PROXY_PASSWORD:-}
     volumes:
       - mailqueue:/var/spool/postfix
       - mailkeys:/etc/opendkim/keys
