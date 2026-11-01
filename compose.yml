@@ -42,13 +42,35 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DNS_CONTROL_API_URL: http://dns-control:8080
       DNS_CONTROL_API_TOKEN: ${DNS_CONTROL_API_TOKEN:?set DNS_CONTROL_API_TOKEN}
+      SMTP_HOST: mail
+      SMTP_PORT: "25"
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_FROM: ${SMTP_FROM:-no-reply@wraplink.ir}
+      SMTP_ALLOW_PLAINTEXT_INTERNAL: "true"
     volumes:
       - ./config/backend.yml:/etc/wraplink/backend.yml:ro
     command: ["-config", "/etc/wraplink/backend.yml"]
     depends_on:
       migrate:
         condition: service_completed_successfully
-    networks: [private]
+      mail:
+        condition: service_started
+    networks: [private, mailnet]
+
+  mail:
+    build:
+      context: .
+      dockerfile: docker/mail/Dockerfile
+    restart: unless-stopped
+    environment:
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-wraplink.ir}
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-mail.wraplink.ir}
+      MAIL_ALLOWED_NETWORK: 172.30.91.0/24
+    volumes:
+      - mailqueue:/var/spool/postfix
+      - mailkeys:/etc/opendkim/keys
+    networks: [mailnet]
 
   dns-control:
     build:
@@ -87,6 +109,13 @@ services:
     networks: [private]
 volumes:
   pgdata:
+  mailqueue:
+  mailkeys:
 networks:
   private:
     driver: bridge
+  mailnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.91.0/24
