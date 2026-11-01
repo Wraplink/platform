@@ -12,6 +12,9 @@ if [ ! -s /etc/opendkim/keys/mail.private ]; then
   mv /etc/opendkim/keys/mail.private.tmp /etc/opendkim/keys/mail.private
 fi
 chown -R opendkim:opendkim /etc/opendkim/keys /run/opendkim
+chmod 700 /etc/opendkim/keys
+chmod 600 /etc/opendkim/keys/mail.private
+chmod 755 /run/opendkim
 cat > /etc/opendkim/TrustedHosts <<EOF
 127.0.0.1
 localhost
@@ -19,6 +22,7 @@ $MAIL_ALLOWED_NETWORK
 EOF
 cat > /etc/opendkim.conf <<EOF
 Syslog yes
+UserID opendkim:opendkim
 UMask 007
 Mode s
 Canonicalization relaxed/simple
