@@ -151,3 +151,74 @@ To test end-to-end, register a disposable WrapLink user using an email address y
 - Back up `mailkeys` securely and keep `mailqueue` persistent. A key rotation requires publishing the new DKIM TXT and coordinated deployment.
 - For real-world sending, set rate limits, abuse prevention and signup throttling at the backend. A new VPS IP may have poor reputation even with all DNS records correct.
 - If outbound port 25 is permanently blocked, direct-to-MX delivery is not viable; use a verified SMTP relay rather than opening inbound ports.
+
+
+## Changing the outbound mail IP (direct or SOCKS5)
+
+**Identify the actual egress IP, not just the VPS address.** Gmail reported `93.187.70.13` for a message sent via the configured SOCKS5 proxy; the WrapLink host's public IP was `80.210.62.115`. These are examples from November 2026, not permanent addresses.
+
+1. Determine whether Postfix sends directly or via `MAIL_PROXY_ENABLED=true` and `MAIL_PROXY_HOST`/`MAIL_PROXY_PORT`. With a proxy, confirm the **actual SMTP TCP/25 egress IP** with the proxy provider or recipient headers/bounce diagnostics; a generic HTTPS IP-check can use a different exit. Ensure the proxy has stable egress and permits SMTP/25.
+2. Edit the **existing single** SPF TXT record at `wraplink.ir` to authorize every current outbound egress IP. For example, during migration: `v=spf1 ip4:80.210.62.115 ip4:93.187.70.13 ~all`. Remove obsolete IPs after migration. Do **not** add a second `v=spf1` record.
+3. If the **direct sending host** changes IP, update `mail.wraplink.ir` A (DNS-only if using Cloudflare), and request a matching PTR from the IP owner. For proxy egress, PTR belongs to the proxy exit IP and is controlled by its provider; changing the mail host A record alone does not change the proxy's reverse DNS. For robust delivery, coordinate a stable exit with suitable PTR/forward DNS and HELO identity.
+4. DKIM `mail._domainkey.wraplink.ir` is tied to the signing **key**, not the sending IP. **Do not regenerate DKIM merely because the IP changes.** DMARC also does not need an IP-specific edit if the From domain stays the same.
+5. Check public DNS and send a **fresh** test message. Inspect the Gmail "Show original" authentication results and any bounce's `Diagnostic-Code`. An empty queue does not prove delivery.
+
+```bash
+dig +short TXT wraplink.ir @1.1.1.1
+dig +short TXT mail._domainkey.wraplink.ir @1.1.1.1
+dig +short TXT _dmarc.wraplink.ir @1.1.1.1
+dig +short A mail.wraplink.ir @1.1.1.1
+dig +short -x 93.187.70.13 @1.1.1.1
+docker compose -f compose.yml -f compose.prod.yml exec mail postqueue -p
+```
+
+If changing proxy settings, update `.env` (`MAIL_PROXY_ENABLED`, `MAIL_PROXY_HOST`, `MAIL_PROXY_PORT`, and optional credentials) and recreate only the mail service:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml up -d --force-recreate mail
+docker compose -f compose.yml -f compose.prod.yml exec mail postconf -M smtp/unix
+```
+
+Keep credentials out of command output, tickets and git.
+
+## DKIM mismatch and deliberate key regeneration
+
+First diagnose, **without rotating keys**:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml exec mail \
+  opendkim-testkey -d wraplink.ir -s mail -k /etc/opendkim/keys/mail.private -vvv
+docker compose -f compose.yml -f compose.prod.yml exec mail \
+  cat /etc/opendkim/keys/mail.txt
+dig +short TXT mail._domainkey.wraplink.ir @1.1.1.1
+```
+
+- `key OK`: published DNS key matches the local private key; this alone does not prove Gmail validated a delivered signature.
+- `keys do not match`: publish the **matching public TXT** from the persistent key's `mail.txt` first, rather than generating a new key. Confirm the TXT value and selector, wait for DNS caches to expire, and rerun the test.
+- `key not secure`: DNSSEC verification was not established; not itself a DKIM failure.
+- Do not use `openssl pkey -pubout -outform DER` as a drop-in DKIM TXT `p=` value: its SubjectPublicKeyInfo encoding may not match the DKIM record's expected RSA key encoding.
+
+**Rotate only if the private key is compromised, missing, or intentional rotation is required.** The following example stages a new 2048-bit RSA key with a **new selector** `mail2026b`, allowing DNS propagation without breaking mail signed by the old selector. Run during a maintenance window; do not expose private keys:
+
+```bash
+# Generate a new key pair in a temporary private directory inside the mail container.
+docker compose -f compose.yml -f compose.prod.yml exec -u root mail sh -ec '
+  install -d -m 700 /root/dkim-rotation
+  opendkim-genkey -b 2048 -d wraplink.ir -s mail2026b -D /root/dkim-rotation
+  cat /root/dkim-rotation/mail2026b.txt
+'
+```
+
+1. Publish the new TXT record at `mail2026b._domainkey.wraplink.ir` using the **entire** generated TXT value (join quoted fragments). Keep the old `mail._domainkey` record published.
+2. Wait for DNS propagation. Then, in the mail container, install the new private key in the **persistent** `/etc/opendkim/keys` directory, with the same owner and permissions as the existing key. Back up the original key securely first. The generated temporary key disappears on container recreation, so **copy it to persistent storage before restarting**.
+3. Change the OpenDKIM signing selector and key path in the deployment configuration to `mail2026b` and `/etc/opendkim/keys/mail2026b.private`. **Do not edit only the runtime container**: `docker/mail/entrypoint.sh` currently configures the selector/key on startup, so the change must be made in the repository and redeployed. Verify the active OpenDKIM configuration after deployment.
+4. Verify with `opendkim-testkey -d wraplink.ir -s mail2026b -k /etc/opendkim/keys/mail2026b.private -vvv`, then send a new message and confirm `dkim=pass` and `dmarc=pass` at the recipient.
+5. Retain the old public selector record long enough for delayed messages to be verified. Remove it only after the transition window; securely retain or retire old private keys according to policy.
+
+**Important:** The current entrypoint may generate/reuse the original `mail` selector on startup. The new-selector procedure requires the configuration change in step 3; do not run the generation command alone and assume the new key is in use.
+
+## Bounce and delivery-status troubleshooting
+
+A `MAILER-DAEMON` message queued to `no-reply@wraplink.ir` is a delivery failure report, **not proof of successful delivery**. Inspect it with `postcat -q QUEUE_ID` and find `Diagnostic-Code`. Gmail `550 5.7.26` with `SPF ... did not pass` and `DKIM = did not pass` means authentication failed. In particular, SPF must authorize the **proxy exit IP** if the SMTP connection exits via SOCKS5.
+
+After capturing the failure details, remove **only that known obsolete bounce**, if appropriate, with `postsuper -d QUEUE_ID`; never clear the whole mail queue as routine troubleshooting. This send-only deployment does not currently provide a reliable inbound bounce mailbox; arrange monitored bounce processing and Postfix logging before production volume.
