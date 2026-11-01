@@ -12,6 +12,11 @@ if [ ! -s /etc/opendkim/keys/mail.private ]; then
   mv /etc/opendkim/keys/mail.private.tmp /etc/opendkim/keys/mail.private
 fi
 chown -R opendkim:opendkim /etc/opendkim/keys /run/opendkim
+cat > /etc/opendkim/TrustedHosts <<EOF
+127.0.0.1
+localhost
+$MAIL_ALLOWED_NETWORK
+EOF
 cat > /etc/opendkim.conf <<EOF
 Syslog yes
 UMask 007
@@ -21,6 +26,7 @@ Socket inet:8891@127.0.0.1
 Domain $MAIL_DOMAIN
 Selector mail
 KeyFile /etc/opendkim/keys/mail.private
+InternalHosts /etc/opendkim/TrustedHosts
 OversignHeaders From
 EOF
 postconf -e "myhostname = $MAIL_HOSTNAME"
