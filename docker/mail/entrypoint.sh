@@ -70,12 +70,14 @@ case "${MAIL_PROXY_ENABLED:-false}" in
         printf 'socks5 %s %s\n' "$MAIL_PROXY_HOST" "$MAIL_PROXY_PORT"
       fi
     } > /etc/proxychains4-mail.conf
+    chown root:postfix /etc/proxychains4-mail.conf
+    chmod 640 /etc/proxychains4-mail.conf
     cat > /usr/local/bin/mail-smtp-proxied <<'EOF'
 #!/bin/sh
 exec /usr/bin/proxychains4 -q -f /etc/proxychains4-mail.conf /usr/lib/postfix/sbin/smtp "$@"
 EOF
     chmod 755 /usr/local/bin/mail-smtp-proxied
-    postconf -M "smtp/unix=smtp unix - - y - - /usr/local/bin/mail-smtp-proxied"
+    postconf -M "smtp/unix=smtp unix - - n - - /usr/local/bin/mail-smtp-proxied"
     echo "Outbound SMTP SOCKS5 proxy enabled"
     ;;
   false) echo "Outbound SMTP direct delivery enabled" ;;
