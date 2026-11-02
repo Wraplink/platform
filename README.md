@@ -40,6 +40,31 @@ Database migrations run through a one-shot `migrate/migrate` container before ba
 
 Web uses same-origin browser requests and `BACKEND_INTERNAL_URL=http://backend:7080` for server-side proxying. It is **not** a browser-accessible address.
 
+### Bootstrap the initial administrator
+
+The backend already implements administrator bootstrap in `internal/bootstrap/admin.go`, invoked from `cmd/api/main.go` after database initialization. Compose's backend service loads `.env` using `env_file: .env`. Configure **both** values in your local `.env` (never commit it):
+
+```dotenv
+WRAPLINK_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+WRAPLINK_BOOTSTRAP_ADMIN_PASSWORD=REPLACE_WITH_A_UNIQUE_16_PLUS_CHARACTER_SECRET
+```
+
+The email must be valid; the password must contain **16–1024 characters**. The example is a placeholder, not a usable password. `scripts/init-env.sh` leaves both fields empty and does **not** create an administrator by default. Set them explicitly, then recreate the backend so it receives the updated environment:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml up -d --no-deps --force-recreate backend
+docker compose -f compose.yml -f compose.prod.yml logs --tail=100 backend | grep -E 'initial administrator created|bootstrap administrator reconciliation completed|failed to bootstrap administrator|failed to load configuration'
+```
+
+On first creation, look for `initial administrator created`. For an already-existing admin account, look for `bootstrap administrator reconciliation completed`. An empty grep result does **not** prove success; inspect full backend logs and container status. Verify the account in PostgreSQL **without exposing credentials**:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml exec -T postgres sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT u.email, u.account_status, u.email_verified, (a.user_id IS NOT NULL) AS is_access_admin FROM users u LEFT JOIN access_admins a ON a.user_id=u.id WHERE u.email=\x27admin@example.com\x27;"'
+```
+
+Replace `admin@example.com` in the SQL with your configured email. This checks the database role, not whether browser login succeeds; test login separately. The bootstrap creates grants in `access_admins`, `payment_review_admins`, and `discount_admins` for a new user. It **will not promote** an existing ordinary user. For an existing bootstrap administrator, the configured password is checked at each backend startup; if changed, the password is reset and active sessions are revoked. **After verifying first-time provisioning, clear both variables from `.env` and recreate the backend again** to prevent an environment-stored bootstrap password from continually controlling that account. Keep a secure recovery procedure for administrator access.
+
 ### Limitations requiring site-specific configuration
 
 - The DNS node advertises `NODE_PUBLIC_IP`; the default `127.0.0.1` is only appropriate for local testing.
