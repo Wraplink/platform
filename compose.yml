@@ -62,6 +62,9 @@ services:
     build:
       context: .
       dockerfile: docker/mail/Dockerfile
+      args:
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTPS_PROXY:-}
     restart: unless-stopped
     environment:
       MAIL_DOMAIN: ${MAIL_DOMAIN:-wraplink.ir}

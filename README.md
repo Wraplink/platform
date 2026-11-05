@@ -91,6 +91,15 @@ On the first production start, `bash scripts/deploy.sh prod` prompts for a prima
 
 Production includes a **send-only Postfix + OpenDKIM** mail relay in the `mail` Compose service. The backend submits registration and password-reset email to `mail:25` over a dedicated private Docker network; no public SMTP ports are published. Delivery to recipient MX servers requires **outbound TCP 25**, correct forward/PTR DNS, SPF, DKIM, DMARC and monitoring.
 
+For restricted networks, configure optional build-time proxy arguments in `.env` (the verified SOCKS5 URL can be used):
+
+```dotenv
+BUILD_HTTP_PROXY=socks5h://192.168.10.114:10810
+BUILD_HTTPS_PROXY=socks5h://192.168.10.114:10810
+```
+
+Then build the mail image with `docker compose -f compose.yml -f compose.prod.yml build mail`. These arguments are supplied only to the mail image build and are independent of `MAIL_PROXY_ENABLED`, `MAIL_PROXY_HOST`, and `MAIL_PROXY_PORT`, which control outbound SMTP at runtime. Leave the build values blank when direct package downloads work. Build-time proxy settings do not configure Docker daemon image pulls.
+
 See **[Self-hosted mail deployment, firewall ports and troubleshooting](docs/self-hosted-mail.md)** for the full runbook, Cloudflare records, DKIM verification, security requirements and diagnostic commands. Do not use the former Mailerever SMTP example for this deployment.
 
 ### Cloudflare Turnstile CAPTCHA
