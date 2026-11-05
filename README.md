@@ -92,3 +92,24 @@ On the first production start, `bash scripts/deploy.sh prod` prompts for a prima
 Production includes a **send-only Postfix + OpenDKIM** mail relay in the `mail` Compose service. The backend submits registration and password-reset email to `mail:25` over a dedicated private Docker network; no public SMTP ports are published. Delivery to recipient MX servers requires **outbound TCP 25**, correct forward/PTR DNS, SPF, DKIM, DMARC and monitoring.
 
 See **[Self-hosted mail deployment, firewall ports and troubleshooting](docs/self-hosted-mail.md)** for the full runbook, Cloudflare records, DKIM verification, security requirements and diagnostic commands. Do not use the former Mailerever SMTP example for this deployment.
+
+### Cloudflare Turnstile CAPTCHA
+
+Create a **Managed** Turnstile widget in the [Cloudflare dashboard](https://dash.cloudflare.com/) for `wraplink.ir` (and `www.wraplink.ir` if used). Add the two values to your private platform `.env`:
+
+```dotenv
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your_public_site_key
+TURNSTILE_SECRET_KEY=your_private_secret_key
+```
+
+The site key is public and is passed through `compose.yml` as a **web Docker build argument**; changing it requires rebuilding the web image. The secret is private and reaches the Go backend through `env_file: .env`; changing it requires recreating the backend container. Never add actual secret values to `.env.example`, frontend variables, or Git.
+
+**Enable both together:** setting only the backend secret rejects public form submissions when the frontend has no widget. The backend currently bypasses CAPTCHA validation if its secret is unset, so a missing secret is **not** secure production enforcement. Turnstile protects registration, verification resend, password-reset requests, and contact submissions.
+
+```bash
+# After editing .env:
+docker compose -f compose.yml -f compose.prod.yml build web
+docker compose -f compose.yml -f compose.prod.yml up -d --no-deps --force-recreate web backend
+```
+
+The backend must reach `https://challenges.cloudflare.com/turnstile/v0/siteverify` over outbound HTTPS (TCP/443); restricted networks must configure working egress before enabling enforcement. Test all four protected forms after deployment. For local development, Cloudflare provides [test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
