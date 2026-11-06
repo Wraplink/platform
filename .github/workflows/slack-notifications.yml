@@ -1,0 +1,37 @@
+name: Slack project notifications
+
+on:
+  issues:
+    types: [opened, reopened, closed]
+  pull_request_target:
+    types: [opened, reopened, closed, ready_for_review]
+  workflow_run:
+    workflows: ["CI", "Build", "Deploy", "Deployment"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Test notification text"
+        required: false
+        default: "WrapLink Slack integration test"
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Send Slack event
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.WRAPLINK_SLACK_WEBHOOK_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PATH: ${{ github.event_path }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/notify_slack.py
