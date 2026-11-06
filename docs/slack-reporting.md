@@ -33,3 +33,13 @@ Backend, DNS Control, Edge Agent and Web should emit structured error events to 
 - HTTP/network error: job fails without logging the secret URL; inspect Actions logs.
 - No CI alerts: confirm the workflow names in the `workflow_run.workflows` list match the actual workflow display names.
 - Slack messages are best-effort; GitHub Actions may retry via rerunning a failed job. Delivery is not exactly-once.
+
+## Current integration status and runtime setup (November 2026)
+
+All five repositories now include GitHub Slack reporting workflows. Backend also includes a PostgreSQL-backed Slack outbox for support tickets and contact submissions, and an authenticated runtime alert ingestion endpoint. DNS Control and Edge Agent send selected runtime errors to that backend endpoint.
+
+A successful Actions run can mean that the webhook was not configured: inspect logs for `Slack webhook is not configured; notification skipped.` Add the Actions secret `WRAPLINK_SLACK_WEBHOOK_URL` to each of the five repositories or use an organization secret accessible to all five. Trigger the workflows manually and confirm messages appear in the intended Slack channel.
+
+For runtime reporting, set `WRAPLINK_SLACK_WEBHOOK_URL` and a long random `WRAPLINK_ALERT_INGEST_KEY` in the production untracked `.env`. Apply backend migrations before deploying. The DNS Control container uses the private Compose address `http://backend:7080`. Dedicated Edge Agent hosts additionally require `WRAPLINK_ALERT_API_URL` set to a backend base URL reachable from host networking, preferably through private HTTPS, and the same `WRAPLINK_ALERT_INGEST_KEY`. Never use the Docker-only backend hostname on a remote edge host. Restrict access to `/api/v1/internal/alerts` to trusted services.
+
+Validate by creating a test contact message and support ticket, testing a controlled DNS sync error and Edge Agent error in staging, and verifying actual Slack delivery. Inspect `slack_outbox` attempts and delivery timestamps for failures. The outbox is at-least-once; duplicates are possible. The integration does not provide bidirectional Slack ticket sync.
