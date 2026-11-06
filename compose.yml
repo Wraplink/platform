@@ -42,6 +42,8 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DNS_CONTROL_API_URL: http://dns-control:8080
       DNS_CONTROL_API_TOKEN: ${DNS_CONTROL_API_TOKEN:?set DNS_CONTROL_API_TOKEN}
+      WRAPLINK_SLACK_WEBHOOK_URL: ${WRAPLINK_SLACK_WEBHOOK_URL:-}
+      WRAPLINK_ALERT_INGEST_KEY: ${WRAPLINK_ALERT_INGEST_KEY:-}
       SMTP_HOST: mail
       SMTP_PORT: "25"
       SMTP_USERNAME: ""
@@ -87,6 +89,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      WRAPLINK_ALERT_API_URL: http://backend:7080
+      WRAPLINK_ALERT_INGEST_KEY: ${WRAPLINK_ALERT_INGEST_KEY:-}
+      WRAPLINK_ENVIRONMENT: ${APP_ENV:-development}
       DNS_LISTEN: ":53"
       DNS_UPSTREAM: ${DNS_UPSTREAM:-1.1.1.1:53,8.8.8.8:53}
       API_LISTEN: ":8080"
