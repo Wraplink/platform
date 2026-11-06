@@ -2,7 +2,7 @@
 
 This guide covers the SSH SOCKS5 service, APT, Git, Docker builds, and Docker Engine image pulls on a restricted-egress WrapLink host. Example values from this deployment:
 
-- SSH endpoint: `root@65.109.209.104`
+- SSH endpoint: `root@PROXY_SERVER_IP`
 - Private key: `/home/wraplink/vpn/id.rsa`
 - SOCKS5 listener: `127.0.0.1:10810` on the tunnel host; LAN clients may use `192.168.10.114:10810` **only when intentionally allowed by firewall**.
 - The local Linux account running the service is `wraplink`; it does **not** require sudo. Administrative installation commands below are run as root.
@@ -25,11 +25,11 @@ First verify the remote host's ED25519 fingerprint independently (for example, f
 
 ```bash
 runuser -u wraplink -- ssh -i /home/wraplink/vpn/id.rsa \
-  -o StrictHostKeyChecking=ask root@65.109.209.104
+  -o StrictHostKeyChecking=ask root@PROXY_SERVER_IP
 # Confirm the fingerprint, type yes, then exit the remote shell.
 runuser -u wraplink -- ssh -i /home/wraplink/vpn/id.rsa \
   -o BatchMode=yes -o StrictHostKeyChecking=yes \
-  root@65.109.209.104 'echo SSH_OK'
+  root@PROXY_SERVER_IP 'echo SSH_OK'
 ```
 
 Create `/etc/systemd/system/wraplink-socks5.service` as root:
@@ -46,7 +46,7 @@ User=wraplink
 Group=wraplink
 WorkingDirectory=/home/wraplink
 Environment=AUTOSSH_GATETIME=0
-ExecStart=/usr/bin/autossh -M 0 -N -i /home/wraplink/vpn/id.rsa -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15 -D 127.0.0.1:10810 root@65.109.209.104
+ExecStart=/usr/bin/autossh -M 0 -N -i /home/wraplink/vpn/id.rsa -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15 -D 127.0.0.1:10810 root@PROXY_SERVER_IP
 Restart=always
 RestartSec=5
 
