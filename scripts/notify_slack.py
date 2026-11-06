@@ -8,7 +8,7 @@ import urllib.request
 
 
 def short(value, limit=240):
-    return str(value or "").replace("\\n", " ").replace("\\r", " ")[:limit]
+    return str(value or "").replace("\n", " ").replace("\r", " ")[:limit]
 
 
 def build_message(event, payload, repo, run_url):
@@ -17,22 +17,22 @@ def build_message(event, payload, repo, run_url):
         issue = payload.get("issue", {})
         if action not in ("opened", "reopened", "closed"):
             return None
-        return f"🎫 *Issue {action}* · {repo}\\n<{issue.get('html_url', run_url)}|#{issue.get('number', '?')} {short(issue.get('title'))}>"
+        return f"🎫 *Issue {action}* · {repo}\n<{issue.get('html_url', run_url)}|#{issue.get('number', '?')} {short(issue.get('title'))}>"
     if event == "pull_request_target":
         pr = payload.get("pull_request", {})
         if action == "closed" and pr.get("merged"):
             action = "merged"
         if action not in ("opened", "reopened", "closed", "merged", "ready_for_review"):
             return None
-        return f"🔀 *Pull request {action}* · {repo}\\n<{pr.get('html_url', run_url)}|#{pr.get('number', '?')} {short(pr.get('title'))}>"
+        return f"🔀 *Pull request {action}* · {repo}\n<{pr.get('html_url', run_url)}|#{pr.get('number', '?')} {short(pr.get('title'))}>"
     if event == "workflow_run":
         workflow = payload.get("workflow_run", {})
         if workflow.get("conclusion") != "failure":
             return None
-        return f"🚨 *CI/CD failed* · {repo}\\n<{workflow.get('html_url', run_url)}|{short(workflow.get('name'))}> · branch \`{short(workflow.get('head_branch'), 80)}\`"
+        return f"🚨 *CI/CD failed* · {repo}\n<{workflow.get('html_url', run_url)}|{short(workflow.get('name'))}> · branch `{short(workflow.get('head_branch'), 80)}`"
     if event == "workflow_dispatch":
         message = payload.get("inputs", {}).get("message", "WrapLink Slack integration test")
-        return f"🧪 *Integration test* · {repo}\\n{short(message)}"
+        return f"🧪 *Integration test* · {repo}\n{short(message)}"
     return None
 
 
