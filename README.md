@@ -28,6 +28,10 @@ bash scripts/deploy.sh prod
 
 Production publishes Web, Backend and the DNS API on loopback, but DNS port 53 publicly. Nginx is included in production Compose for TLS offload and forwards requests to Web over the private Docker network. Before the first production start, obtain a certificate using `bash scripts/issue-cert.sh wraplink.ir ops@example.com` (replace with your actual email), and ensure the domain points to the server and TCP port 80 is reachable. Nginx will fail to start without certificate files. The current configuration targets `wraplink.ir`; adjust the Nginx configuration and certificate issuance for additional hostnames. Automate certificate renewal and Nginx reload before production use. Do not publicly expose the backend control APIs or DNS API. Review ACLs, firewall, TLS, backups, and secrets before internet exposure. Production is a **starting configuration, not a hardened, fully tested production deployment**.
 
+### Restricted-network outbound proxy (Debian 13)
+
+For a persistent SSH SOCKS5 tunnel and separate configuration of **APT**, **Git**, **Docker image builds**, **Docker daemon pulls**, and runtime containers, see the [outbound proxy runbook](docs/proxy.md). The runbook includes the unprivileged `wraplink` systemd service, SSH host-key verification, restart diagnostics, proxy security, and rollback steps. Docker daemon pulls require a compatible HTTP CONNECT proxy/bridge; do not assume the mail image's SOCKS5 build arguments configure the daemon.
+
 ### Edge host
 
 Do not start Edge Agent unless its public IPs, routes, nftables privileges and network boundaries are configured. A different host requires its own checkout of this repository, environment file, and `bash scripts/deploy.sh edge`. Edit `config/edge-agent.yml` for actual addresses and routing capacities; `WRAPLINK_BACKEND_URL` and `DNS_CONTROL_API_URL` must be externally reachable private or TLS endpoints.
