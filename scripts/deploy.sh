@@ -12,12 +12,10 @@ if [[ ! -f .env ]]; then echo "First run: bash scripts/init-env.sh" >&2; exit 1;
 if [[ "$mode" == prod ]]; then
   bash scripts/detect-public-ip.sh
 fi
-if [[ "$mode" == prod ]]; then
-  # A generated Nginx configuration is not proof that certificate issuance
-  # succeeded. A previous failed attempt can leave this file behind.
-  if [[ ! -s nginx/generated/default.conf ]] || ! find letsencrypt/live -mindepth 2 -maxdepth 2 -name fullchain.pem -print -quit 2>/dev/null | grep -q .; then
-    bash scripts/setup-ssl.sh
-  fi
+if [[ "$mode" == prod && ! -s nginx/generated/default.conf ]]; then
+  # setup-ssl.sh checks for an existing certificate inside its Docker volume.
+  # Do not inspect root-owned certificate directories from the host account.
+  bash scripts/setup-ssl.sh
 fi
 if [[ "$mode" == edge ]]; then
   docker compose --env-file .env -f "$override" up -d --build
