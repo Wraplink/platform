@@ -12,6 +12,42 @@ The website certificate covers only `wraplink.ir` and `www.wraplink.ir`. The edg
 
 The script currently proxies all paths on each API hostname, subject to IP allowlisting and upstream authentication. Before opening access more broadly, audit the exact agent-required endpoints and restrict location paths. Do not place a Cloudflare-proxied hostname in front of this source-IP allowlist without a trusted-real-IP design.
 
+## Required setup variables
+
+The `scripts/setup-control-api.sh` command requires two **shell environment variables** on the **central production host**. They are not automatically read from `.env` by the script, and they are not required by the running Nginx container.
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `LE_EMAIL` | Contact email registered with Let's Encrypt for expiry and account notices; use a valid mailbox you control. | `ops@example.com` |
+| `EDGE_AGENT_ALLOWED_IP` | The public **source IPv4** that Nginx observes when the remote Edge Agent connects. This IP is added to the HTTPS API allowlist. | `185.194.190.84` |
+
+Determine the egress address **on the Edge Agent host**, not on the central server:
+
+```bash
+curl --noproxy '*' -4 -fsS https://api.ipify.org; echo
+```
+
+An assigned inbound IPv4 is not necessarily the outbound source IP if the host uses NAT or an outbound proxy. Verify that the source IP remains stable. If it changes, the API returns HTTP 403 until the allowlist is updated. Only IPv4 is accepted by the setup script.
+
+Set the values for a single invocation (replace both examples):
+
+```bash
+cd /home/wraplink/platform
+LE_EMAIL="ops@example.com" \
+EDGE_AGENT_ALLOWED_IP="185.194.190.84" \
+bash scripts/setup-control-api.sh
+```
+
+Alternatively, export them in the current shell:
+
+```bash
+export LE_EMAIL="ops@example.com"
+export EDGE_AGENT_ALLOWED_IP="185.194.190.84"
+bash scripts/setup-control-api.sh
+```
+
+Neither variable is an API credential. Keep `DNS_CONTROL_API_TOKEN` and `NETWORK_CONTROL_SYNC_KEY` secret and configured separately. This setup issues certificates and writes the IP allowlist; it does **not** install automated renewal or validate application API authentication.
+
 ## Troubleshooting
 
 - **404 on HTTP-01**: Verify `docker exec wraplink-nginx-1 cat /var/www/certbot/.well-known/acme-challenge/<test-file>` and then request `http://api.wraplink.ir/.well-known/acme-challenge/<test-file>`. Both must show the same content.
