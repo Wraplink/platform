@@ -20,7 +20,8 @@ docker compose --env-file .env -f compose.yml -f compose.prod.yml ps nginx
 # This local probe does not replace a separate external ACME reachability test.
 probe="wraplink-acme-$$"
 printf '%s\n' "$probe" > "www/certbot/.well-known/acme-challenge/$probe"
-# umask 077 protects private files, but HTTP-01 tokens must be readable by Nginx.\nchmod 644 "www/certbot/.well-known/acme-challenge/$probe"
+# umask 077 protects private files, but HTTP-01 tokens must be readable by Nginx.
+chmod 644 "www/certbot/.well-known/acme-challenge/$probe"
 trap 'rm -f "www/certbot/.well-known/acme-challenge/$probe"' EXIT
 for domain in api.wraplink.ir dns-api.wraplink.ir; do
   actual="$(curl --noproxy '*' --resolve "$domain:80:127.0.0.1" --fail --silent --show-error --max-time 15 "http://$domain/.well-known/acme-challenge/$probe")" || {
@@ -29,7 +30,8 @@ for domain in api.wraplink.ir dns-api.wraplink.ir; do
   [[ "$actual" == "$probe" ]] || { echo "Unexpected LOCAL ACME response from $domain: $actual" >&2; exit 1; }
 done
 
-echo "Local ACME probe passed. Ensure both hostnames were tested from an external network before issuing."\ndocker run --rm \
+echo "Local ACME probe passed. Ensure both hostnames were tested from an external network before issuing."
+docker run --rm \
   -v "$PWD/letsencrypt:/etc/letsencrypt" \
   -v "$PWD/www/certbot:/var/www/certbot" \
   certbot/certbot:v3.3.0 certonly --webroot \
