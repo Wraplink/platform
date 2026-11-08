@@ -32,7 +32,7 @@ Production publishes Web, Backend and the DNS API on loopback, but DNS port 53 p
 
 For a persistent SSH SOCKS5 tunnel and separate configuration of **APT**, **Git**, **Docker image builds**, **Docker daemon pulls**, and runtime containers, see the [outbound proxy runbook](docs/proxy.md). The runbook includes the unprivileged `wraplink` systemd service, SSH host-key verification, restart diagnostics, proxy security, and rollback steps. Docker daemon pulls require a compatible HTTP CONNECT proxy/bridge; do not assume the mail image's SOCKS5 build arguments configure the daemon.
 
-### Edge host
+For remote Edge Agent HTTPS access, see [Control API HTTPS setup](docs/control-api-https.md), including required `LE_EMAIL` and `EDGE_AGENT_ALLOWED_IP` environment variables.\n\n### Edge host
 
 Do not start Edge Agent unless its public IPs, routes, nftables privileges and network boundaries are configured. A different host requires its own checkout of this repository, environment file, and `bash scripts/deploy.sh edge`. Edit `config/edge-agent.yml` for actual addresses and routing capacities; `WRAPLINK_BACKEND_URL` and `DNS_CONTROL_API_URL` must be externally reachable private or TLS endpoints.
 
