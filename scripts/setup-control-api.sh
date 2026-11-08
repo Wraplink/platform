@@ -15,18 +15,18 @@ mkdir -p nginx/generated/api-vhosts www/certbot/.well-known/acme-challenge letse
 test -s nginx/generated/default.conf || { echo "Missing nginx/generated/default.conf" >&2; exit 1; }
 docker compose --env-file .env -f compose.yml -f compose.prod.yml ps nginx
 
-# Prove the HTTP-01 webroot is served by the running Nginx container.
+# Verify the local Nginx webroot directly. A central server may have an outbound\n# HTTP proxy or hairpin-NAT interception when accessing its own public IP.\n# This local probe does not replace a separate external ACME reachability test.
 probe="wraplink-acme-$$"
 printf '%s\n' "$probe" > "www/certbot/.well-known/acme-challenge/$probe"
 trap 'rm -f "www/certbot/.well-known/acme-challenge/$probe"' EXIT
 for domain in api.wraplink.ir dns-api.wraplink.ir; do
-  actual="$(curl --fail --silent --show-error --max-time 15 "http://$domain/.well-known/acme-challenge/$probe")" || {
+  actual="$(curl --noproxy '*' --resolve "$domain:80:127.0.0.1" --fail --silent --show-error --max-time 15 "http://$domain/.well-known/acme-challenge/$probe")" || {
     echo "ACME HTTP probe failed for $domain; do not request a certificate yet" >&2; exit 1;
   }
-  [[ "$actual" == "$probe" ]] || { echo "Unexpected ACME response from $domain: $actual" >&2; exit 1; }
+  [[ "$actual" == "$probe" ]] || { echo "Unexpected LOCAL ACME response from $domain: $actual" >&2; exit 1; }
 done
 
-docker run --rm \
+echo "Local ACME probe passed. Ensure both hostnames were tested from an external network before issuing."\ndocker run --rm \
   -v "$PWD/letsencrypt:/etc/letsencrypt" \
   -v "$PWD/www/certbot:/var/www/certbot" \
   certbot/certbot:v3.3.0 certonly --webroot \
