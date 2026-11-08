@@ -34,6 +34,9 @@ For a persistent SSH SOCKS5 tunnel and separate configuration of **APT**, **Git*
 
 ### Edge host
 
+For step-by-step provisioning, validation, Full Route enablement, troubleshooting, and rollback on a dedicated Debian 13 server, see [Edge Agent deployment runbook](docs/edge-agent-deployment.md).
+
+
 Do not start Edge Agent unless its public IPs, routes, nftables privileges and network boundaries are configured. A different host requires its own checkout of this repository, environment file, and `bash scripts/deploy.sh edge`. Edit `config/edge-agent.yml` for actual addresses and routing capacities; `WRAPLINK_BACKEND_URL` and `DNS_CONTROL_API_URL` must be externally reachable private or TLS endpoints.
 
 ### Configuration and secrets
