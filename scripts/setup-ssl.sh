@@ -79,5 +79,6 @@ CONF
   }
 }
 CONF
+  echo 'include /etc/nginx/api-vhosts/*.conf;'
 } > nginx/generated/default.conf
 echo "Certificate ready. Start production with: bash scripts/deploy.sh prod"

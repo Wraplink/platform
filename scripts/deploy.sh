@@ -10,6 +10,7 @@ case "$mode" in
 esac
 if [[ ! -f .env ]]; then echo "First run: bash scripts/init-env.sh" >&2; exit 1; fi
 if [[ "$mode" == prod ]]; then
+  mkdir -p nginx/generated/api-vhosts
   bash scripts/detect-public-ip.sh
 fi
 if [[ "$mode" == prod && ! -s nginx/generated/default.conf ]]; then
