@@ -17,7 +17,7 @@ docker compose --env-file .env -f compose.yml -f compose.prod.yml ps nginx
 
 # Verify the local Nginx webroot directly. A central server may have an outbound\n# HTTP proxy or hairpin-NAT interception when accessing its own public IP.\n# This local probe does not replace a separate external ACME reachability test.
 probe="wraplink-acme-$$"
-printf '%s\n' "$probe" > "www/certbot/.well-known/acme-challenge/$probe"
+printf '%s\n' "$probe" > "www/certbot/.well-known/acme-challenge/$probe"\n# umask 077 protects private files, but HTTP-01 tokens must be readable by Nginx.\nchmod 644 "www/certbot/.well-known/acme-challenge/$probe"
 trap 'rm -f "www/certbot/.well-known/acme-challenge/$probe"' EXIT
 for domain in api.wraplink.ir dns-api.wraplink.ir; do
   actual="$(curl --noproxy '*' --resolve "$domain:80:127.0.0.1" --fail --silent --show-error --max-time 15 "http://$domain/.well-known/acme-challenge/$probe")" || {
