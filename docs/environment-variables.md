@@ -55,6 +55,7 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `TURNSTILE_SECRET_KEY` | Backend runtime | Private CAPTCHA verification key | Optional; server-only |
 | `WRAPLINK_SLACK_WEBHOOK_URL` | Backend runtime | Slack notifications | Optional |
 | `WRAPLINK_ALERT_INGEST_KEY`, `WRAPLINK_ALERT_API_URL` | Backend / DNS Control alerts; edge senders | Shared alert auth and target API | Optional |
+| `WRAPLINK_DIAGNOSTICS_TOKEN` | Standalone Edge Agent only (when explicitly enabled in `config.yml`) | Private diagnostics HTTP API authentication token; not needed for agent registration/heartbeats | Optional; diagnostics disabled by default |
 
 Compose also sets fixed `SMTP_HOST=mail`, `SMTP_PORT=25`, `SMTP_ALLOW_PLAINTEXT_INTERNAL=true`, `BACKEND_INTERNAL_URL=http://backend:7080`, and `BACKEND_PROXY_TRUST_NEXT_FORWARDED_FOR=false`. They are **container environment settings**, not independent `.env.example` entries.
 
@@ -115,6 +116,10 @@ The DNS Control Go loader currently uses `os.ExpandEnv`; **unset variables silen
 | `NETWORK_CONTROL_KEY` | backend.control_key | **Same value as Backend `NETWORK_CONTROL_SYNC_KEY`** |
 
 For SNI-only nodes, use `EDGE_ROUTE_CAPACITY=0` and `backend.route_public_ips: []`. For Full Route, explicitly add dedicated route IPs in the YAML and provision them in Backend. Edge Agent validates missing referenced environment variables rather than silently substituting empty values.
+
+| `WRAPLINK_DIAGNOSTICS_TOKEN` | diagnostics.token (only if configured as `${WRAPLINK_DIAGNOSTICS_TOKEN}`) | Optional secret for private diagnostics API; set `diagnostics.enabled: true` and keep listener on loopback | 
+
+**Important:** The shipped Edge Agent `config.yml` has `diagnostics.enabled: false` and a literal empty `diagnostics.token`. Setting the environment variable alone does not enable the API. Generate a strong token (`openssl rand -hex 32`) only when enabling diagnostics; never expose port 9091 publicly.
 
 **Naming caution:** central platform optional edge variables (`EDGE_ID`, `EDGE_REGION`, `EDGE_ADDRESSES`, `EDGE_SNI_LISTEN`) are **not** the same names as standalone Edge Agent's `EDGE_AGENT_ID`, `EDGE_AGENT_REGION`, `EDGE_PUBLIC_IP`, `EDGE_SNI_LISTEN_ADDRESS`.
 
