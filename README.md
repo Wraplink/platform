@@ -126,3 +126,7 @@ docker compose -f compose.yml -f compose.prod.yml up -d --no-deps --force-recrea
 ```
 
 The backend must reach `https://challenges.cloudflare.com/turnstile/v0/siteverify` over outbound HTTPS (TCP/443); restricted networks must configure working egress before enabling enforcement. Test all four protected forms after deployment. For local development, Cloudflare provides [test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
+
+## Authoritative agent registry rollout
+
+For the new Backend / DNS Control / Edge Agent release, apply Backend migration `000046_agent_health`, deploy compatible Edge Agents, and verify fresh `network_agent_health` heartbeats **before** enabling DNS Control snapshots. Set `WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED=true` in `.env` and recreate DNS Control only after registration is healthy. The flag defaults to `false`. **Backend Full Route eligibility already requires Backend heartbeats regardless of this flag**, so coordinate deployment on any live Full Route fleet. Follow [the rollout guide](https://github.com/Wraplink/backend/blob/master/docs/agent-registry-rollout.md).
