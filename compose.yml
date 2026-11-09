@@ -96,6 +96,7 @@ services:
       DNS_UPSTREAM: ${DNS_UPSTREAM:-1.1.1.1:53,8.8.8.8:53}
       API_LISTEN: ":8080"
       WRAPLINK_BACKEND_URL: http://backend:7080
+      WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED: ${WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED:-false}
       NETWORK_CONTROL_SYNC_KEY: ${NETWORK_CONTROL_SYNC_KEY:?set NETWORK_CONTROL_SYNC_KEY}
     volumes:
       - ./config/dns-control.yaml:/etc/dns-control/config.yaml:ro
