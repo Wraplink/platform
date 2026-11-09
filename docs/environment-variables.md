@@ -29,6 +29,7 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `NETWORK_CONTROL_SYNC_KEY` | Backend and DNS Control | Shared control synchronization secret | Required by central Compose |
 | `DNS_CONTROL_API_TOKEN` | Backend, DNS Control API clients, remote Edge | DNS Control HTTP API client token | Required by central Compose |
 | `DNS_CONTROL_AGENT_TOKEN` | DNS Control agent.token | Agent registration credential | Required for registration |
+| `WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED` | DNS Control runtime (Compose passes through) | Use paginated Backend-authoritative agent snapshots instead of local agent inventory | **false by default**; enable only after Backend and Edge Agent heartbeat rollout |
 | `PAYMENTS_DEV_SETTLEMENT_KEY` | Backend payments.dev-settlement-key | Development-only settlement | Optional; never enable in production |
 | `DNS_LISTEN` | DNS Control DNS listener (central Compose overrides to `:53`) | UDP/TCP DNS bind | Default `:53` |
 | `DNS_UPSTREAM` | DNS Control upstream | Comma-separated upstream `IP:53` entries | Default two public resolvers |
@@ -56,6 +57,10 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `WRAPLINK_ALERT_INGEST_KEY`, `WRAPLINK_ALERT_API_URL` | Backend / DNS Control alerts; edge senders | Shared alert auth and target API | Optional |
 
 Compose also sets fixed `SMTP_HOST=mail`, `SMTP_PORT=25`, `SMTP_ALLOW_PLAINTEXT_INTERNAL=true`, `BACKEND_INTERNAL_URL=http://backend:7080`, and `BACKEND_PROXY_TRUST_NEXT_FORWARDED_FOR=false`. They are **container environment settings**, not independent `.env.example` entries.
+
+## Coordinated agent-registry upgrade
+
+Deploy compatible Backend (including migration `000046_agent_health`) and Edge Agents first, verify `network_agent_health` has fresh online records, then enable `WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED=true` in the DNS Control environment and recreate DNS Control. Backend Full Route eligibility requires both route IP inventory and Backend agent-health heartbeats; do not deploy it ahead of compatible Edge Agents on a live Full Route fleet without a maintenance window. The flag controls DNS Control snapshots only, **not** Backend route eligibility. See [Backend rollout guide](https://github.com/Wraplink/backend/blob/master/docs/agent-registry-rollout.md).
 
 ## 3. Standalone Backend (`Wraplink/backend/config.yml`)
 
