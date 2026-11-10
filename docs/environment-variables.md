@@ -123,6 +123,29 @@ For SNI-only nodes, use `EDGE_ROUTE_CAPACITY=0` and `backend.route_public_ips: [
 
 **Naming caution:** central platform optional edge variables (`EDGE_ID`, `EDGE_REGION`, `EDGE_ADDRESSES`, `EDGE_SNI_LISTEN`) are **not** the same names as standalone Edge Agent's `EDGE_AGENT_ID`, `EDGE_AGENT_REGION`, `EDGE_PUBLIC_IP`, `EDGE_SNI_LISTEN_ADDRESS`.
 
+## DNS query reporting and persistent spool
+
+DNS query reporting is **opt-in** and must be enabled only after the compatible Backend ingestion endpoint (Backend PR #86 and migration) and DNS-Control reporting worker (DNS-Control PR #43, stacked on #41) have been deployed.
+
+| Variable | Default in platform Compose | Purpose |
+| --- | --- | --- |
+| `WRAPLINK_DNS_QUERY_REPORT_ENABLED` | `false` | Enable asynchronous DNS query reporting to Backend; only active when Backend and DNS node registration are configured |
+| `WRAPLINK_DNS_QUERY_SPOOL_DIR` | `/var/lib/wraplink/dns-query-spool` | Disk directory used for batch persistence; central Compose sets this automatically |
+| `WRAPLINK_DNS_QUERY_SPOOL_MAX_BYTES` | `67108864` (64 MiB) | Maximum retained batch payload bytes; must be a positive integer |
+
+The central Compose file mounts the **`dnsqueryspool` named volume** at `/var/lib/wraplink/dns-query-spool`. This volume survives container recreation, but **not** `docker compose down -v` or explicit volume removal. Do not mount the spool on ephemeral container storage. Confirm that the DNS-Control process can write to the directory before enabling reporting.
+
+To opt in after rollout, set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=true` in the platform `.env` and recreate DNS-Control. To inspect the mount without printing secrets, run:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml config --quiet
+docker compose -f compose.yml -f compose.prod.yml ps dns-control
+docker compose -f compose.yml -f compose.prod.yml logs --tail=100 dns-control
+docker volume ls --filter name=dnsqueryspool
+```
+
+A persisted batch is replayed after a restart with its original event IDs; Backend must deduplicate those IDs. This is **not** a guarantee that every DNS request survives a crash: events still in the bounded memory channel have not yet reached disk. Long outages may fill both the spool and memory queue. Monitor `delivered`, `failed_batches`, `dropped`, `pending` logs and disk capacity. See [DNS-Control query reporting operations](https://github.com/Wraplink/dns-control/blob/main/docs/dns-query-reporting-operations.md).
+
 ## 6. Operator checks
 
 ```bash
