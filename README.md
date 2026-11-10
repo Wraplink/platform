@@ -130,3 +130,9 @@ The backend must reach `https://challenges.cloudflare.com/turnstile/v0/siteverif
 ## Authoritative agent registry rollout
 
 For the new Backend / DNS Control / Edge Agent release, apply Backend migration `000046_agent_health`, deploy compatible Edge Agents, and verify fresh `network_agent_health` heartbeats **before** enabling DNS Control snapshots. Set `WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED=true` in `.env` and recreate DNS Control only after registration is healthy. The flag defaults to `false`. **Backend Full Route eligibility already requires Backend heartbeats regardless of this flag**, so coordinate deployment on any live Full Route fleet. Follow [the rollout guide](https://github.com/Wraplink/backend/blob/master/docs/agent-registry-rollout.md).
+
+## DNS query reporting (optional)
+
+DNS-Control can asynchronously report DNS query metadata to Backend for the admin Network / DNS Queries view. Deploy compatible Backend and DNS-Control versions first, then set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=true` in `.env` and recreate DNS-Control. The Compose stack mounts a persistent `dnsqueryspool` volume and defaults to a 64 MiB disk budget. Events not yet persisted can still be lost during abrupt shutdown; monitor reporting counters and disk usage.
+
+See [environment variables](docs/environment-variables.md#dns-query-reporting-and-persistent-spool) and the [DNS-Control reporting runbook](https://github.com/Wraplink/dns-control/blob/main/docs/dns-query-reporting-operations.md).
