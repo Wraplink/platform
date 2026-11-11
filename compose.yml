@@ -120,7 +120,7 @@ services:
     environment:
       NODE_ENV: production
       BACKEND_INTERNAL_URL: http://backend:7080
-      BACKEND_PROXY_TRUST_NEXT_FORWARDED_FOR: "false"
+      BACKEND_PROXY_TRUST_NEXT_FORWARDED_FOR: "true"
       NEXT_PUBLIC_API_BASE_URL: ""
     depends_on:
       backend:

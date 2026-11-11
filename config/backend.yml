@@ -38,4 +38,7 @@ cors:
   allowed-origins:
     - ${FRONTEND_URL}
 server:
-  trusted-proxies: []
+  # Trust only the Docker private-network proxy peers, not public clients.
+  # Update this CIDR if the Docker private network changes.
+  trusted-proxies:
+    - 172.18.0.0/16
