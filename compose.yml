@@ -97,9 +97,13 @@ services:
       API_LISTEN: ":8080"
       WRAPLINK_BACKEND_URL: http://backend:7080
       WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED: ${WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED:-false}
+      WRAPLINK_DNS_QUERY_REPORT_ENABLED: ${WRAPLINK_DNS_QUERY_REPORT_ENABLED:-false}
+      WRAPLINK_DNS_QUERY_SPOOL_DIR: /var/lib/wraplink/dns-query-spool
+      WRAPLINK_DNS_QUERY_SPOOL_MAX_BYTES: ${WRAPLINK_DNS_QUERY_SPOOL_MAX_BYTES:-67108864}
       NETWORK_CONTROL_SYNC_KEY: ${NETWORK_CONTROL_SYNC_KEY:?set NETWORK_CONTROL_SYNC_KEY}
     volumes:
       - ./config/dns-control.yaml:/etc/dns-control/config.yaml:ro
+      - dnsqueryspool:/var/lib/wraplink/dns-query-spool
     depends_on:
       backend:
         condition: service_started
@@ -123,6 +127,7 @@ services:
         condition: service_started
     networks: [private]
 volumes:
+  dnsqueryspool:
   pgdata:
   mailqueue:
   mailkeys:

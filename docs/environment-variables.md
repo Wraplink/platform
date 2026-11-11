@@ -123,6 +123,29 @@ For SNI-only nodes, use `EDGE_ROUTE_CAPACITY=0` and `backend.route_public_ips: [
 
 **Naming caution:** central platform optional edge variables (`EDGE_ID`, `EDGE_REGION`, `EDGE_ADDRESSES`, `EDGE_SNI_LISTEN`) are **not** the same names as standalone Edge Agent's `EDGE_AGENT_ID`, `EDGE_AGENT_REGION`, `EDGE_PUBLIC_IP`, `EDGE_SNI_LISTEN_ADDRESS`.
 
+## DNS query reporting and persistent spool
+
+DNS query reporting is **opt-in** and must be enabled only after the compatible Backend ingestion endpoint (Backend PR #86 and migration) and DNS-Control reporting worker (DNS-Control PR #43, stacked on #41) have been deployed.
+
+| Variable | Default in platform Compose | Purpose |
+| --- | --- | --- |
+| `WRAPLINK_DNS_QUERY_REPORT_ENABLED` | `false` | Enable asynchronous DNS query reporting to Backend; only active when Backend and DNS node registration are configured |
+| `WRAPLINK_DNS_QUERY_SPOOL_DIR` | `/var/lib/wraplink/dns-query-spool` | Disk directory used for batch persistence; central Compose sets this automatically |
+| `WRAPLINK_DNS_QUERY_SPOOL_MAX_BYTES` | `67108864` (64 MiB) | Maximum retained batch payload bytes; must be a positive integer |
+
+The central Compose file mounts the **`dnsqueryspool` named volume** at `/var/lib/wraplink/dns-query-spool`. This volume survives container recreation, but **not** `docker compose down -v` or explicit volume removal. Do not mount the spool on ephemeral container storage. Confirm that the DNS-Control process can write to the directory before enabling reporting.
+
+To opt in after rollout, set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=true` in the platform `.env` and recreate DNS-Control. To inspect the mount without printing secrets, run:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml config --quiet
+docker compose -f compose.yml -f compose.prod.yml ps dns-control
+docker compose -f compose.yml -f compose.prod.yml logs --tail=100 dns-control
+docker volume ls --filter name=dnsqueryspool
+```
+
+A persisted batch is replayed after a restart with its original event IDs; Backend must deduplicate those IDs. This is **not** a guarantee that every DNS request survives a crash: events still in the bounded memory channel have not yet reached disk. Long outages may fill both the spool and memory queue. Monitor `delivered`, `failed_batches`, `dropped`, `pending` logs and disk capacity. See [DNS-Control query reporting operations](https://github.com/Wraplink/dns-control/blob/main/docs/dns-query-reporting-operations.md).
+
 ## 6. Operator checks
 
 ```bash
@@ -138,3 +161,19 @@ done
 For standalone services, verify `.env.local` is passed with Compose `env_file`, use `chmod 600 .env.local`, and inspect startup logs for missing variables, auth failures, invalid node IPs, and TLS errors. For remote nodes, `http://backend:7080` and `http://dns-control:8080` are Docker-only names and **will not resolve** outside the central Compose network.
 
 See [new Edge Agent setup](https://github.com/Wraplink/edge-agent/blob/main/docs/new-agent-setup.md) and [new DNS Control setup](https://github.com/Wraplink/dns-control/blob/main/docs/new-dns-control-setup.md).
+
+
+## DNS query reporting rollout verification
+
+DNS query reporting must be enabled only after the Backend ingestion migration and API, the DNS-Control reporting worker, and the Admin DNS Queries page are deployed. DNS-Control PR #43 is stacked on PR #41; merge the base reporting change before its persistence/retry follow-up. Platform PR #38 provides the persistent spool volume.
+
+1. Keep `WRAPLINK_DNS_QUERY_REPORT_ENABLED=false` while deploying the Backend ingestion migration and checking Backend health.
+2. Deploy DNS-Control with the persistent `dnsqueryspool` volume. Confirm the directory is writable by the DNS-Control container user; preserve the volume across container recreations.
+3. Enable reporting for one controller only, then issue an ordinary DNS query and a query for a managed domain. Verify both DNS responses succeed.
+4. In Admin → Network → DNS Queries, verify that both queries appear with the expected controller, query name, response code, and resolution mode. Check managed/unmanaged filtering, search, pagination, and registering an unmanaged domain into the managed list.
+5. Check `docker compose -f compose.yml -f compose.prod.yml logs --tail=200 dns-control` for `dns query reporting stats`. Verify `delivered` increases and `pending` returns toward zero. Investigate `dropped` or `failed_batches` growth.
+6. In staging, temporarily interrupt Backend ingestion, issue queries, and verify persisted JSON batches appear in the spool. Recreate only the DNS-Control container **without removing volumes**, restore Backend, and verify replay delivers the original event IDs without duplicate history rows.
+7. Confirm that HTTP 401/403 failures retain batches for retry, that authorization recovery replays them, and that corrupt batches are quarantined as `.json.corrupt` for operator review.
+8. Roll out to other controllers only after the single-controller checks pass. Monitor both logical spool quota and actual filesystem free space.
+
+Do not use `docker compose down -v` during a recovery test. DNS query reporting is best-effort for events still in memory: a forced crash can lose events not yet persisted.
