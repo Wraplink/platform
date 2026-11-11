@@ -125,7 +125,7 @@ For SNI-only nodes, use `EDGE_ROUTE_CAPACITY=0` and `backend.route_public_ips: [
 
 ## DNS query reporting and persistent spool
 
-DNS query reporting is **opt-in** and must be enabled only after the compatible Backend ingestion endpoint (Backend PR #86 and migration) and DNS-Control reporting worker (DNS-Control PR #43, stacked on #41) have been deployed.
+DNS query reporting is **opt-in**. The Backend ingestion endpoint (Backend PR #86), DNS-Control reporting and persistence (PRs #41 and #43), Admin UI (Web PRs #81 and #85), and Platform persistent spool (PR #38) are merged. Deploy the compatible images and apply the Backend migration before enabling reporting.
 
 | Variable | Default in platform Compose | Purpose |
 | --- | --- | --- |
@@ -165,7 +165,7 @@ See [new Edge Agent setup](https://github.com/Wraplink/edge-agent/blob/main/docs
 
 ## DNS query reporting rollout verification
 
-DNS query reporting must be enabled only after the Backend ingestion migration and API, the DNS-Control reporting worker, and the Admin DNS Queries page are deployed. DNS-Control PR #43 is stacked on PR #41; merge the base reporting change before its persistence/retry follow-up. Platform PR #38 provides the persistent spool volume.
+DNS query reporting must be enabled only after the Backend ingestion migration and API, the DNS-Control reporting worker, and the Admin DNS Queries page are deployed. The reporting, persistence/retry, Backend, Web, and Platform PRs are merged; production deployment and migration verification remain required.
 
 1. Keep `WRAPLINK_DNS_QUERY_REPORT_ENABLED=false` while deploying the Backend ingestion migration and checking Backend health.
 2. Deploy DNS-Control with the persistent `dnsqueryspool` volume. Confirm the directory is writable by the DNS-Control container user; preserve the volume across container recreations.
@@ -177,3 +177,20 @@ DNS query reporting must be enabled only after the Backend ingestion migration a
 8. Roll out to other controllers only after the single-controller checks pass. Monitor both logical spool quota and actual filesystem free space.
 
 Do not use `docker compose down -v` during a recovery test. DNS query reporting is best-effort for events still in memory: a forced crash can lose events not yet persisted.
+
+### Production activation and rollback
+
+From the Platform checkout on the production host, use the existing deployment process to update Backend, DNS-Control, Web, and Compose **while reporting is still disabled**. Do not treat a successful GitHub merge as proof that the production containers have been updated.
+
+Before enabling reporting, validate the effective Compose configuration without exposing resolved secrets:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml config --quiet
+docker compose -f compose.yml -f compose.prod.yml ps backend dns-control web
+docker volume ls --filter name=dnsqueryspool
+docker compose -f compose.yml -f compose.prod.yml logs --tail=100 backend dns-control
+```
+
+Confirm that the Backend DNS query migration has been applied, the DNS controller is registered, the control key matches, and the DNS-Control container can write to its spool mount. Then set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=true` in the production `.env` and recreate **only** the DNS-Control service using the standard deployment procedure. Do not use `docker compose down -v`.
+
+If ingestion errors, unexpected drops, or storage pressure occur, set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=false` and recreate DNS-Control. **Preserve the `dnsqueryspool` volume** and investigate before re-enabling. Disabling reporting stops new capture; it does not by itself delete persisted batches. Never publish `docker compose config` output, environment values, or HTTP authorization headers in incident logs.
