@@ -1,0 +1,22 @@
+name: Mail Docker build
+
+on:
+  pull_request:
+    paths:
+      - 'docker/mail/**'
+      - '.github/workflows/mail-build.yml'
+      - 'compose.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mail-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Build Debian 13 mail image
+        run: docker build --pull --progress=plain -f docker/mail/Dockerfile -t wraplink-mail:ci .
