@@ -18,9 +18,6 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 check 'Compose configuration validates' "${compose[@]}" config --quiet
-check 'Backend container running' "${compose[@]}" ps --status running --services backend
-check 'DNS-Control container running' "${compose[@]}" ps --status running --services dns-control
-check 'Web container running' "${compose[@]}" ps --status running --services web
 # A running service check must also verify that the service appears in the output.
 for service in backend dns-control web; do
   if ! "${compose[@]}" ps --status running --services "$service" 2>/dev/null | grep -qx "$service"; then
@@ -41,7 +38,7 @@ else
     fail=1
   fi
 fi
-if grep -Eq '^WRAPLINK_DNS_QUERY_REPORT_ENABLED=true([[:space:]]*)$' .env; then
+if [[ "${WRAPLINK_DNS_QUERY_REPORT_ENABLED:-$(sed -n 's/^WRAPLINK_DNS_QUERY_REPORT_ENABLED=//p' .env | tail -n 1)}" == true ]]; then
   echo 'INFO DNS query reporting is enabled in .env'
 else
   echo 'INFO DNS query reporting is disabled in .env (safe default)'
