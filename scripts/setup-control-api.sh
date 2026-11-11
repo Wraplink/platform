@@ -83,10 +83,47 @@ CONF
 chmod 644 "$tmp"
 mv "$tmp" nginx/generated/api-vhosts/control-api.conf
 
-# Existing production config may predate the API include. Preserve it in place.
-if ! grep -Fq 'include /etc/nginx/api-vhosts/*.conf;' nginx/generated/default.conf; then
-  printf '\ninclude /etc/nginx/api-vhosts/*.conf;\n' >> nginx/generated/default.conf
+# Remove API hostnames from the main website vhost. Older setup-ssl runs
+# included these hostnames, which shadows the API vhosts and produces HTTP 404.
+# Only edit the server_name directive that contains the primary website domain.
+default_conf=nginx/generated/default.conf
+backup="$(mktemp nginx/generated/default.conf.backup.XXXXXX)"
+cp "$default_conf" "$backup"
+normalized="$(mktemp nginx/generated/default.conf.normalized.XXXXXX)"
+awk '
+  /server_name[[:space:]]/ {
+    directive=$0
+    while (directive !~ /;/ && (getline line)>0) directive=directive " " line
+    if (directive ~ /wraplink[.]ir/ && directive ~ /api[.]wraplink[.]ir/) {
+      print "  server_name wraplink.ir www.wraplink.ir;"
+    } else {
+      print directive
+    }
+    next
+  }
+  {print}
+' "$default_conf" > "$normalized"
+cat "$normalized" > "$default_conf"
+rm -f "$normalized"
+if ! grep -Fq 'include /etc/nginx/api-vhosts/*.conf;' "$default_conf"; then
+  printf '\ninclude /etc/nginx/api-vhosts/*.conf;\n' >> "$default_conf"
 fi
-docker exec wraplink-nginx-1 nginx -t
-docker exec wraplink-nginx-1 nginx -s reload
+# Reject duplicate server names or missing API vhosts; nginx -t alone may warn
+# about duplicate names without failing.
+test_output="$(docker exec wraplink-nginx-1 nginx -t 2>&1)" || {
+  printf '%s\n' "$test_output" >&2
+  cp "$backup" "$default_conf"
+  exit 1
+}
+if grep -qi 'conflicting server name' <<< "$test_output"; then
+  printf '%s\n' "$test_output" >&2
+  cp "$backup" "$default_conf"
+  exit 1
+fi
+if ! docker exec wraplink-nginx-1 nginx -s reload; then
+  cp "$backup" "$default_conf"
+  docker exec wraplink-nginx-1 nginx -s reload || true
+  exit 1
+fi
+rm -f "$backup"
 echo "API HTTPS vhosts enabled. Confirm access from the edge agent."
