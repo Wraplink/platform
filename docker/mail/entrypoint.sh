@@ -88,8 +88,12 @@ opendkim -x /etc/opendkim.conf -f &
 dkim_pid=$!
 trap 'kill "$dkim_pid" 2>/dev/null || true; postfix stop || true' TERM INT
 postfix check
-postfix start
-echo "Mail relay ready. Publish the DKIM TXT key from /etc/opendkim/keys/mail.txt"
-while kill -0 "$dkim_pid" 2>/dev/null; do sleep 5; done
-echo "DKIM signer stopped" >&2
+# Foreground mode keeps Postfix delivery logs on the container's stdout.
+postfix start-fg &
+postfix_pid=$!
+echo "Starting mail relay. Publish the DKIM TXT key from /etc/opendkim/keys/mail.txt"
+while kill -0 "$dkim_pid" 2>/dev/null && kill -0 "$postfix_pid" 2>/dev/null; do
+  sleep 5
+done
+echo "DKIM signer or Postfix stopped" >&2
 exit 1
