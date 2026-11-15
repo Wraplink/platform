@@ -1,5 +1,10 @@
 #!/bin/sh
 set -eu
+postfix_mode="${MAIL_POSTFIX_MODE:-foreground}"
+case "$postfix_mode" in
+  foreground|background) ;;
+  *) echo "MAIL_POSTFIX_MODE must be foreground or background" >&2; exit 1 ;;
+esac
 : "${MAIL_DOMAIN:?MAIL_DOMAIN is required}"
 : "${MAIL_HOSTNAME:?MAIL_HOSTNAME is required}"
 : "${MAIL_ALLOWED_NETWORK:?MAIL_ALLOWED_NETWORK is required}"
@@ -88,12 +93,23 @@ opendkim -x /etc/opendkim.conf -f &
 dkim_pid=$!
 trap 'kill "$dkim_pid" 2>/dev/null || true; postfix stop || true' TERM INT
 postfix check
-# Foreground mode keeps Postfix delivery logs on the container's stdout.
-postfix start-fg &
-postfix_pid=$!
-echo "Starting mail relay. Publish the DKIM TXT key from /etc/opendkim/keys/mail.txt"
-while kill -0 "$dkim_pid" 2>/dev/null && kill -0 "$postfix_pid" 2>/dev/null; do
+postfix_pid=
+case "$postfix_mode" in
+  foreground)
+    postfix start-fg &
+    postfix_pid=$!
+    ;;
+  background)
+    postfix start
+    ;;
+esac
+echo "Starting mail relay ($postfix_mode). Publish the DKIM TXT key from /etc/opendkim/keys/mail.txt"
+while kill -0 "$dkim_pid" 2>/dev/null; do
+  if [ -n "$postfix_pid" ] && ! kill -0 "$postfix_pid" 2>/dev/null; then
+    echo "Postfix stopped" >&2
+    exit 1
+  fi
   sleep 5
 done
-echo "DKIM signer or Postfix stopped" >&2
+echo "DKIM signer stopped" >&2
 exit 1
