@@ -126,8 +126,8 @@ Use a proxy address reachable **from the build environment**. This SOCKS5 settin
 mkdir -p /etc/systemd/system/docker.service.d
 cat > /etc/systemd/system/docker.service.d/http-proxy.conf <<'EOF'
 [Service]
-Environment="HTTP_PROXY=http://127.0.0.1:3128"
-Environment="HTTPS_PROXY=http://127.0.0.1:3128"
+Environment="HTTP_PROXY=socks5h://127.0.0.1:3128"
+Environment="HTTPS_PROXY=socks5h://127.0.0.1:3128"
 Environment="NO_PROXY=localhost,127.0.0.1,::1"
 EOF
 systemctl daemon-reload
