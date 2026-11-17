@@ -5,11 +5,21 @@ umask 077
 
 # Run on the central production host after deploying the updated compose.prod.yml.
 : "${LE_EMAIL:?Set LE_EMAIL to your Let's Encrypt contact email}"
-: "${EDGE_AGENT_ALLOWED_IP:?Set EDGE_AGENT_ALLOWED_IP to the agent's observed public egress IPv4}"
-[[ "$EDGE_AGENT_ALLOWED_IP" =~ ^[0-9]+(\.[0-9]+){3}$ ]] || { echo "Invalid EDGE_AGENT_ALLOWED_IP" >&2; exit 2; }
-for octet in ${EDGE_AGENT_ALLOWED_IP//./ }; do
-  (( 10#$octet <= 255 )) || { echo "Invalid IPv4 octet" >&2; exit 2; }
+# Support multiple agent egress IPs; retain the legacy single-IP variable.
+agent_ips="${EDGE_AGENT_ALLOWED_IPS:-${EDGE_AGENT_ALLOWED_IP:-}}"
+: "${agent_ips:?Set EDGE_AGENT_ALLOWED_IPS (comma-separated IPv4 addresses)}"
+allow_rules=""
+IFS=',' read -r -a ip_list <<< "$agent_ips"
+for ip in "${ip_list[@]}"; do
+  ip="${ip//[[:space:]]/}"
+  [[ "$ip" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]] || { echo "Invalid agent IPv4: $ip" >&2; exit 2; }
+  IFS='.' read -r -a octets <<< "$ip"
+  for octet in "${octets[@]}"; do
+    (( 10#$octet <= 255 )) || { echo "Invalid agent IPv4: $ip" >&2; exit 2; }
+  done
+  allow_rules+="  allow $ip;"$'\\n'
 done
+allow_rules+="  deny all;"
 
 mkdir -p nginx/generated/api-vhosts www/certbot/.well-known/acme-challenge letsencrypt
 test -s nginx/generated/default.conf || { echo "Missing nginx/generated/default.conf" >&2; exit 1; }
@@ -39,7 +49,7 @@ docker run --rm \
   --email "$LE_EMAIL" --cert-name wraplink-control-api \
   -d api.wraplink.ir -d dns-api.wraplink.ir
 
-# Restrict both API vhosts to the agent IP; upstream authentication still applies.
+# Restrict both API vhosts to the configured agent IPs; upstream authentication still applies.
 # Never trust an unverified X-Forwarded-For header for access control.
 tmp="$(mktemp nginx/generated/api-vhosts/control-api.conf.XXXXXX)"
 cat > "$tmp" <<CONF
@@ -49,8 +59,7 @@ server {
   ssl_certificate /etc/letsencrypt/live/wraplink-control-api/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/wraplink-control-api/privkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
-  allow $EDGE_AGENT_ALLOWED_IP;
-  deny all;
+$allow_rules
   location / {
     proxy_pass http://backend:7080;
     proxy_set_header Host \$host;
@@ -67,8 +76,7 @@ server {
   ssl_certificate /etc/letsencrypt/live/wraplink-control-api/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/wraplink-control-api/privkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
-  allow $EDGE_AGENT_ALLOWED_IP;
-  deny all;
+$allow_rules
   location / {
     proxy_pass http://dns-control:8080;
     proxy_set_header Host \$host;
