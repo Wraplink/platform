@@ -65,6 +65,20 @@ fi
 
 # Restrict both API vhosts to authorized agent IPs; upstream authentication still applies.
 # Never trust an unverified X-Forwarded-For header for access control.
+api_conf=nginx/generated/api-vhosts/control-api.conf
+api_backup="$(mktemp nginx/generated/api-vhosts/control-api.conf.backup.XXXXXX)"
+api_existed=false
+if [[ -f "$api_conf" ]]; then
+  cp "$api_conf" "$api_backup"
+  api_existed=true
+fi
+restore_api_conf() {
+  if $api_existed; then
+    cp "$api_backup" "$api_conf"
+  else
+    rm -f "$api_conf"
+  fi
+}
 tmp="$(mktemp nginx/generated/api-vhosts/control-api.conf.XXXXXX)"
 cat > "$tmp" <<CONF
 server {
@@ -103,7 +117,7 @@ $allow_rules
 }
 CONF
 chmod 644 "$tmp"
-mv "$tmp" nginx/generated/api-vhosts/control-api.conf
+mv "$tmp" "$api_conf"
 
 # Remove API hostnames from the main website vhost. Older setup-ssl runs
 # included these hostnames, which shadows the API vhosts and produces HTTP 404.
@@ -135,6 +149,7 @@ fi
 test_output="$(docker exec wraplink-nginx-1 nginx -t 2>&1)" || {
   printf '%s\n' "$test_output" >&2
   cp "$backup" "$default_conf"
+  restore_api_conf
   exit 1
 }
 if grep -qi 'conflicting server name' <<< "$test_output"; then
@@ -144,8 +159,9 @@ if grep -qi 'conflicting server name' <<< "$test_output"; then
 fi
 if ! docker exec wraplink-nginx-1 nginx -s reload; then
   cp "$backup" "$default_conf"
+  restore_api_conf
   docker exec wraplink-nginx-1 nginx -s reload || true
   exit 1
 fi
-rm -f "$backup"
+rm -f "$backup" "$api_backup"
 echo "API HTTPS vhosts enabled. Confirm access from the edge agent."
