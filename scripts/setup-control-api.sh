@@ -18,7 +18,8 @@ for ip in "${ip_list[@]}"; do
     (( 10#$octet <= 255 )) || { echo "Invalid agent IPv4: $ip" >&2; exit 2; }
   done
   allow_rules="$(printf '%s\n' "$allow_rules" "  allow $ip;")"
-allow_rules+="  deny all;"
+done
+allow_rules="$(printf '%s\n' "$allow_rules" "  deny all;")"
 
 mkdir -p nginx/generated/api-vhosts www/certbot/.well-known/acme-challenge letsencrypt
 test -s nginx/generated/default.conf || { echo "Missing nginx/generated/default.conf" >&2; exit 1; }
