@@ -76,7 +76,7 @@ Replace `admin@example.com` in the SQL with your configured email. This checks t
 ### Limitations requiring site-specific configuration
 
 - The DNS node advertises `NODE_PUBLIC_IP`; the default `127.0.0.1` is only appropriate for local testing.
-- DNS Control needs a securely shared agent token; ensure Edge Agent uses the matching token in `DNS_CONTROL_API_TOKEN` on the edge host.
+- DNS Control needs a securely shared agent token; ensure Edge Agent uses the matching dedicated `DNS_CONTROL_AGENT_TOKEN` on the edge host. `DNS_CONTROL_API_TOKEN` is the separate HTTP API client credential.
 - Real Edge Agent full-route forwarding requires assigning IP addresses to the host and configuring capacities/routes correctly.
 - Production app readiness, live external DNS behavior, TLS proxying, NAT/iptables/nftables interactions and end-to-end smoke tests must be verified on the actual servers.
 
@@ -140,3 +140,28 @@ For the new Backend / DNS Control / Edge Agent release, apply Backend migration 
 DNS-Control can asynchronously report DNS query metadata to Backend for the admin Network / DNS Queries view. Deploy compatible Backend and DNS-Control versions first, then set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=true` in `.env` and recreate DNS-Control. The Compose stack mounts a persistent `dnsqueryspool` volume and defaults to a 64 MiB disk budget. Events not yet persisted can still be lost during abrupt shutdown; monitor reporting counters and disk usage.
 
 See [environment variables](docs/environment-variables.md#dns-query-reporting-and-persistent-spool) and the [DNS-Control reporting runbook](https://github.com/Wraplink/dns-control/blob/main/docs/dns-query-reporting-operations.md).
+
+### Multi-edge control API allowlist
+
+The public HTTPS endpoints `api.wraplink.ir` and `dns-api.wraplink.ir` are restricted by source IPv4 in the generated Nginx configuration. On the **central platform host**, set `EDGE_AGENT_ALLOWED_IPS` to a comma-separated list of the **public egress IPv4 addresses** of every authorized Edge Agent (not the agent's private LAN address):
+
+```dotenv
+EDGE_AGENT_ALLOWED_IPS=185.194.190.84,185.194.191.11
+```
+
+`EDGE_AGENT_ALLOWED_IP` is supported as a legacy single-IP fallback when `EDGE_AGENT_ALLOWED_IPS` is empty. Do not set both with conflicting expectations: the plural setting takes precedence. Every generated API vhost includes explicit `allow` rules followed by `deny all`; valid agent tokens are still required. Adding an IP does **not** bypass endpoint authentication.
+
+After deploying a changed allowlist, on the central host run:
+
+```bash
+set -a
+source .env
+set +a
+./scripts/setup-control-api.sh --skip-certbot
+```
+
+Use `--skip-certbot` **only if** the existing `letsencrypt/live/wraplink-control-api/` certificate and private key are present. Without this flag the script performs an HTTP-01 probe and requests a certificate; set `LE_EMAIL` and ensure public port 80 reachability for that path. The script checks Nginx configuration and reloads Nginx; if validation or reload fails, investigate before retrying. Check the generated `nginx/generated/api-vhosts/control-api.conf` for all expected `allow` entries and `deny all`.
+
+On each **edge host**, set `DNS_CONTROL_AGENT_TOKEN` to the registration credential expected by DNS Control; do not reuse `DNS_CONTROL_API_TOKEN` unless the server is explicitly configured to accept the same value. Keep tokens in private `.env` files and never commit them. Retry agent registration and confirm fresh heartbeat/registration state. A 403 from Nginx typically indicates source-IP allowlist rejection; a 401 from the upstream API indicates an authentication failure. Review both layers rather than weakening either.
+
+See [environment variables](docs/environment-variables.md) for the complete settings reference.
