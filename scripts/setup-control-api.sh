@@ -24,12 +24,9 @@ for ip in "${ip_list[@]}"; do
   for octet in "${octets[@]}"; do
     (( 10#$octet <= 255 )) || { echo "Invalid agent IPv4: $ip" >&2; exit 2; }
   done
-  allow_rules+="  allow $ip;"
+  printf -v allow_rules "%s\n  allow %s;" "$allow_rules" "$ip"
 done
-allow_rules+="  deny all;"
-\n'
-done
-allow_rules+="  deny all;"
+allow_rules="${allow_rules}"$'\n'"  deny all;"
 
 mkdir -p nginx/generated/api-vhosts www/certbot/.well-known/acme-challenge letsencrypt
 test -s nginx/generated/default.conf || { echo "Missing nginx/generated/default.conf" >&2; exit 1; }
