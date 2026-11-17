@@ -1,0 +1,27 @@
+name: Control API configuration checks
+on:
+  pull_request:
+    paths:
+      - 'scripts/setup-control-api.sh'
+      - '.github/workflows/control-api-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/setup-control-api.sh'
+      - '.github/workflows/control-api-check.yml'
+
+jobs:
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose shell parsing with ShellCheck
+        run: shellcheck -s bash scripts/setup-control-api.sh
+      - name: Validate control API setup script syntax
+        run: bash -n scripts/setup-control-api.sh
+      - name: Verify allowlist is restricted and token settings are present
+        run: |
+          grep -Fq 'deny all;' scripts/setup-control-api.sh
+          grep -Fq 'EDGE_AGENT_ALLOWED_IPS' scripts/setup-control-api.sh
+          grep -Fq 'DNS_CONTROL_AGENT_TOKEN' compose.edge.yml
+          grep -Fq 'DNS_CONTROL_AGENT_TOKEN' config/edge-agent.yml

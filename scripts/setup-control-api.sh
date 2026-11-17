@@ -4,12 +4,31 @@ cd "$(dirname "$0")/.."
 umask 077
 
 # Run on the central production host after deploying the updated compose.prod.yml.
-: "${LE_EMAIL:?Set LE_EMAIL to your Let's Encrypt contact email}"
-: "${EDGE_AGENT_ALLOWED_IP:?Set EDGE_AGENT_ALLOWED_IP to the agent's observed public egress IPv4}"
-[[ "$EDGE_AGENT_ALLOWED_IP" =~ ^[0-9]+(\.[0-9]+){3}$ ]] || { echo "Invalid EDGE_AGENT_ALLOWED_IP" >&2; exit 2; }
-for octet in ${EDGE_AGENT_ALLOWED_IP//./ }; do
-  (( 10#$octet <= 255 )) || { echo "Invalid IPv4 octet" >&2; exit 2; }
+# Use --skip-certbot for allowlist-only updates with existing certificates.
+skip_certbot=false
+if [[ "${1:-}" == "--skip-certbot" && $# -eq 1 ]]; then
+  skip_certbot=true
+elif (( $# > 0 )); then
+  echo "Usage: $0 [--skip-certbot]" >&2; exit 2
+fi
+if ! $skip_certbot; then
+  : "${LE_EMAIL:?Set LE_EMAIL to your Lets Encrypt contact email}"
+fi
+# Support multiple edge egress IPv4 addresses with legacy single-IP fallback.
+agent_ips="${EDGE_AGENT_ALLOWED_IPS:-${EDGE_AGENT_ALLOWED_IP:-}}"
+: "${agent_ips:?Set EDGE_AGENT_ALLOWED_IPS or EDGE_AGENT_ALLOWED_IP}"
+allow_rules=""
+IFS=',' read -r -a ip_list <<< "$agent_ips"
+for ip in "${ip_list[@]}"; do
+  ip="${ip//[[:space:]]/}"
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "Invalid agent IPv4: $ip" >&2; exit 2; }
+  IFS='.' read -r -a octets <<< "$ip"
+  for octet in "${octets[@]}"; do
+    (( 10#$octet <= 255 )) || { echo "Invalid agent IPv4: $ip" >&2; exit 2; }
+  done
+  printf -v allow_rules "%s\n  allow %s;" "$allow_rules" "$ip"
 done
+printf -v allow_rules "%s\n  deny all;" "$allow_rules"
 
 mkdir -p nginx/generated/api-vhosts www/certbot/.well-known/acme-challenge letsencrypt
 test -s nginx/generated/default.conf || { echo "Missing nginx/generated/default.conf" >&2; exit 1; }
@@ -18,7 +37,8 @@ docker compose --env-file .env -f compose.yml -f compose.prod.yml ps nginx
 # Verify the local Nginx webroot directly. A central server may have an outbound
 # HTTP proxy or hairpin-NAT interception when accessing its own public IP.
 # This local probe does not replace a separate external ACME reachability test.
-probe="wraplink-acme-$$"
+if ! $skip_certbot; then
+probe="wraplink-acme-${BASHPID}"
 printf '%s\n' "$probe" > "www/certbot/.well-known/acme-challenge/$probe"
 # umask 077 protects private files, but HTTP-01 tokens must be readable by Nginx.
 chmod 644 "www/certbot/.well-known/acme-challenge/$probe"
@@ -31,16 +51,34 @@ for domain in api.wraplink.ir dns-api.wraplink.ir; do
 done
 
 echo "Local ACME probe passed. Ensure both hostnames were tested from an external network before issuing."
-docker run --rm \
-  -v "$PWD/letsencrypt:/etc/letsencrypt" \
-  -v "$PWD/www/certbot:/var/www/certbot" \
-  certbot/certbot:v3.3.0 certonly --webroot \
-  -w /var/www/certbot --non-interactive --agree-tos \
-  --email "$LE_EMAIL" --cert-name wraplink-control-api \
-  -d api.wraplink.ir -d dns-api.wraplink.ir
+  docker run --rm \
+    -v "$PWD/letsencrypt:/etc/letsencrypt" \
+    -v "$PWD/www/certbot:/var/www/certbot" \
+    certbot/certbot:v3.3.0 certonly --webroot \
+    -w /var/www/certbot --non-interactive --agree-tos \
+    --email "$LE_EMAIL" --cert-name wraplink-control-api \
+    -d api.wraplink.ir -d dns-api.wraplink.ir
+else
+  test -s letsencrypt/live/wraplink-control-api/fullchain.pem || { echo "Missing existing control API certificate" >&2; exit 1; }
+  test -s letsencrypt/live/wraplink-control-api/privkey.pem || { echo "Missing existing control API private key" >&2; exit 1; }
+fi
 
-# Restrict both API vhosts to the agent IP; upstream authentication still applies.
+# Restrict both API vhosts to authorized agent IPs; upstream authentication still applies.
 # Never trust an unverified X-Forwarded-For header for access control.
+api_conf=nginx/generated/api-vhosts/control-api.conf
+api_backup="$(mktemp nginx/generated/api-vhosts/control-api.conf.backup.XXXXXX)"
+api_existed=false
+if [[ -f "$api_conf" ]]; then
+  cp "$api_conf" "$api_backup"
+  api_existed=true
+fi
+restore_api_conf() {
+  if $api_existed; then
+    cp "$api_backup" "$api_conf"
+  else
+    rm -f "$api_conf"
+  fi
+}
 tmp="$(mktemp nginx/generated/api-vhosts/control-api.conf.XXXXXX)"
 cat > "$tmp" <<CONF
 server {
@@ -49,8 +87,7 @@ server {
   ssl_certificate /etc/letsencrypt/live/wraplink-control-api/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/wraplink-control-api/privkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
-  allow $EDGE_AGENT_ALLOWED_IP;
-  deny all;
+$allow_rules
   location / {
     proxy_pass http://backend:7080;
     proxy_set_header Host \$host;
@@ -67,8 +104,7 @@ server {
   ssl_certificate /etc/letsencrypt/live/wraplink-control-api/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/wraplink-control-api/privkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
-  allow $EDGE_AGENT_ALLOWED_IP;
-  deny all;
+$allow_rules
   location / {
     proxy_pass http://dns-control:8080;
     proxy_set_header Host \$host;
@@ -81,7 +117,7 @@ server {
 }
 CONF
 chmod 644 "$tmp"
-mv "$tmp" nginx/generated/api-vhosts/control-api.conf
+mv "$tmp" "$api_conf"
 
 # Remove API hostnames from the main website vhost. Older setup-ssl runs
 # included these hostnames, which shadows the API vhosts and produces HTTP 404.
@@ -113,6 +149,7 @@ fi
 test_output="$(docker exec wraplink-nginx-1 nginx -t 2>&1)" || {
   printf '%s\n' "$test_output" >&2
   cp "$backup" "$default_conf"
+  restore_api_conf
   exit 1
 }
 if grep -qi 'conflicting server name' <<< "$test_output"; then
@@ -122,8 +159,9 @@ if grep -qi 'conflicting server name' <<< "$test_output"; then
 fi
 if ! docker exec wraplink-nginx-1 nginx -s reload; then
   cp "$backup" "$default_conf"
+  restore_api_conf
   docker exec wraplink-nginx-1 nginx -s reload || true
   exit 1
 fi
-rm -f "$backup"
+rm -f "$backup" "$api_backup"
 echo "API HTTPS vhosts enabled. Confirm access from the edge agent."

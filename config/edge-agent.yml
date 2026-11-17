@@ -1,6 +1,6 @@
 dns_control:
   url: ${DNS_CONTROL_API_URL}
-  token: ${DNS_CONTROL_API_TOKEN}
+  token: ${DNS_CONTROL_AGENT_TOKEN}
 backend:
   url: ${WRAPLINK_BACKEND_URL}
   control_key: ${NETWORK_CONTROL_KEY}
