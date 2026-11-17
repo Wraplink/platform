@@ -41,7 +41,7 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `FRONTEND_URL` | Backend, Compose | Public browser-facing origin and CORS entry | Required for Backend |
 | `APP_ENV` | Backend, DNS Control runtime | development/production | Required for Backend |
 | `SECURE_COOKIES` | Backend security.secure-cookies | HTTPS session-cookie security | **true in production** |
-| `COOKIE_DOMAIN` | Backend security.refresh-cookie-domain | Cookie domain; blank for host-only | Optional |
+| `COOKIE_DOMAIN` | Backend security.refresh-cookie-domain | Configured cookie domain; current auth cookie writers do not apply it, so cookies remain host-only | Optional; leave blank for same-origin deployment |
 | `BACKEND_TRUSTED_PROXIES` | Deployment config/scripts; not directly mapped in tracked Backend YAML | Trusted reverse proxies | Check generated config before relying on it |
 | `WRAPLINK_BOOTSTRAP_ADMIN_EMAIL`, `WRAPLINK_BOOTSTRAP_ADMIN_PASSWORD` | Backend runtime (read directly from env) | Admin bootstrap; password 16–1024 chars | Optional; both together |
 | `EDGE_ENABLED`, `EDGE_ID`, `EDGE_REGION`, `EDGE_ADDRESSES` | Platform edge deployment scripts/config | Optional platform-managed edge identity | Only if platform edge enabled |
@@ -194,3 +194,25 @@ docker compose -f compose.yml -f compose.prod.yml logs --tail=100 backend dns-co
 Confirm that the Backend DNS query migration has been applied, the DNS controller is registered, the control key matches, and the DNS-Control container can write to its spool mount. Then set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=true` in the production `.env` and recreate **only** the DNS-Control service using the standard deployment procedure. Do not use `docker compose down -v`.
 
 If ingestion errors, unexpected drops, or storage pressure occur, set `WRAPLINK_DNS_QUERY_REPORT_ENABLED=false` and recreate DNS-Control. **Preserve the `dnsqueryspool` volume** and investigate before re-enabling. Disabling reporting stops new capture; it does not by itself delete persisted batches. Never publish `docker compose config` output, environment values, or HTTP authorization headers in incident logs.
+
+
+## Authentication sessions and refresh-cookie troubleshooting
+
+For the same-origin production site, set `APP_ENV=production`, `FRONTEND_URL=https://wraplink.ir`, `SECURE_COOKIES=true`, and leave `COOKIE_DOMAIN=` blank. The current Backend issues host-only `wraplink_refresh` and `wraplink_remember_device` HttpOnly cookies, `SameSite=Lax`, `Path=/api/v1/auth`; Secure follows `SECURE_COOKIES`. A selected **Remember this device** option persists cookies; otherwise the refresh cookie is a browser-session cookie. Access tokens last 15 minutes and refresh sessions have a 720-hour configured TTL. Do not put refresh tokens in browser storage or logs.
+
+The browser calls same-origin `/api/v1/auth/refresh` through Next.js (`BACKEND_INTERNAL_URL=http://backend:7080`). A `401` from this endpoint can mean the cookie was absent, expired, invalid, revoked or reused after rotation. A `401` on protected `/api/v1/admin/network/domains` is expected without a valid access token. Backend replay detection intentionally revokes a refresh-token family; do not disable it.
+
+Inspect Chrome DevTools → Network → `/api/v1/auth/refresh`: confirm whether the **Cookie header contains the cookie name** `wraplink_refresh` (never copy its value), whether the response sets or clears it, and whether login has just succeeded. A missing cookie points to browser cookie scope, persistence or proxy delivery; a present cookie with `401` requires checking session revocation/expiry and server logs. Backend administrator bootstrap password changes revoke existing sessions. Re-login is expected after such a change.
+
+Safe production checks (do not print the environment or cookie/token values):
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml config --quiet
+docker compose -f compose.yml -f compose.prod.yml exec -T backend sh -c '
+  [ "$APP_ENV" = production ] && echo "APP_ENV: production" || echo "WARNING: APP_ENV is not production"
+  [ "$SECURE_COOKIES" = true ] && echo "SECURE_COOKIES: enabled" || echo "WARNING: SECURE_COOKIES not true"
+  case "$FRONTEND_URL" in https://*) echo "FRONTEND_URL: HTTPS" ;; *) echo "WARNING: FRONTEND_URL not HTTPS" ;; esac
+'
+```
+
+If login succeeds but refresh immediately fails, inspect browser request/response cookie metadata and backend session records before changing any security setting. Do not publish raw `Cookie`, `Set-Cookie`, `Authorization`, JWT secrets, or database token hashes. Web PR #99 adds redirect handling for rejected refresh sessions; it does not itself repair missing cookies or revoked backend sessions.
