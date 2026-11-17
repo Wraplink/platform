@@ -28,7 +28,7 @@ for ip in "${ip_list[@]}"; do
   done
   printf -v allow_rules "%s\n  allow %s;" "$allow_rules" "$ip"
 done
-allow_rules="${allow_rules}"$'\n'"  deny all;"
+printf -v allow_rules "%s\n  deny all;" "$allow_rules"
 
 mkdir -p nginx/generated/api-vhosts www/certbot/.well-known/acme-challenge letsencrypt
 test -s nginx/generated/default.conf || { echo "Missing nginx/generated/default.conf" >&2; exit 1; }
@@ -38,7 +38,7 @@ docker compose --env-file .env -f compose.yml -f compose.prod.yml ps nginx
 # HTTP proxy or hairpin-NAT interception when accessing its own public IP.
 # This local probe does not replace a separate external ACME reachability test.
 if ! $skip_certbot; then
-probe="wraplink-acme-$"
+probe="wraplink-acme-${BASHPID}"
 printf '%s\n' "$probe" > "www/certbot/.well-known/acme-challenge/$probe"
 # umask 077 protects private files, but HTTP-01 tokens must be readable by Nginx.
 chmod 644 "www/certbot/.well-known/acme-challenge/$probe"
