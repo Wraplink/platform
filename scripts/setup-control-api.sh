@@ -11,7 +11,9 @@ if [[ "${1:-}" == "--skip-certbot" && $# -eq 1 ]]; then
 elif (( $# > 0 )); then
   echo "Usage: $0 [--skip-certbot]" >&2; exit 2
 fi
-: "${LE_EMAIL:?Set LE_EMAIL to your Let's Encrypt contact email}"
+if ! $skip_certbot; then
+  : "${LE_EMAIL:?Set LE_EMAIL to your Let's Encrypt contact email}"
+fi
 # Support multiple edge egress IPv4 addresses with legacy single-IP fallback.
 agent_ips="${EDGE_AGENT_ALLOWED_IPS:-${EDGE_AGENT_ALLOWED_IP:-}}"
 : "${agent_ips:?Set EDGE_AGENT_ALLOWED_IPS or EDGE_AGENT_ALLOWED_IP}"
@@ -35,7 +37,8 @@ docker compose --env-file .env -f compose.yml -f compose.prod.yml ps nginx
 # Verify the local Nginx webroot directly. A central server may have an outbound
 # HTTP proxy or hairpin-NAT interception when accessing its own public IP.
 # This local probe does not replace a separate external ACME reachability test.
-probe="wraplink-acme-$$"
+if ! $skip_certbot; then
+probe="wraplink-acme-$"
 printf '%s\n' "$probe" > "www/certbot/.well-known/acme-challenge/$probe"
 # umask 077 protects private files, but HTTP-01 tokens must be readable by Nginx.
 chmod 644 "www/certbot/.well-known/acme-challenge/$probe"
@@ -48,7 +51,6 @@ for domain in api.wraplink.ir dns-api.wraplink.ir; do
 done
 
 echo "Local ACME probe passed. Ensure both hostnames were tested from an external network before issuing."
-if ! $skip_certbot; then
   docker run --rm \
     -v "$PWD/letsencrypt:/etc/letsencrypt" \
     -v "$PWD/www/certbot:/var/www/certbot" \
@@ -58,6 +60,7 @@ if ! $skip_certbot; then
     -d api.wraplink.ir -d dns-api.wraplink.ir
 else
   test -s letsencrypt/live/wraplink-control-api/fullchain.pem || { echo "Missing existing control API certificate" >&2; exit 1; }
+  test -s letsencrypt/live/wraplink-control-api/privkey.pem || { echo "Missing existing control API private key" >&2; exit 1; }
 fi
 
 # Restrict both API vhosts to authorized agent IPs; upstream authentication still applies.
