@@ -44,6 +44,10 @@ Database migrations run through a one-shot `migrate/migrate` container before ba
 
 Web uses same-origin browser requests and `BACKEND_INTERNAL_URL=http://backend:7080` for server-side proxying. It is **not** a browser-accessible address.
 
+### Authentication session configuration
+
+For production HTTPS, configure `APP_ENV=production`, `FRONTEND_URL=https://wraplink.ir`, `SECURE_COOKIES=true`, and leave `COOKIE_DOMAIN=` blank for same-origin host-only refresh cookies. The backend currently does not apply `COOKIE_DOMAIN` to its auth cookie writers; do not assume changing it enables cross-subdomain cookies. See [authentication refresh-cookie troubleshooting](docs/environment-variables.md#authentication-sessions-and-refresh-cookie-troubleshooting) for cookie scope, expiry, safe checks and handling `401 authentication required` errors. Never log or paste refresh-cookie values.
+
 ### Bootstrap the initial administrator
 
 The backend already implements administrator bootstrap in `internal/bootstrap/admin.go`, invoked from `cmd/api/main.go` after database initialization. Compose's backend service loads `.env` using `env_file: .env`. Configure **both** values in your local `.env` (never commit it):
