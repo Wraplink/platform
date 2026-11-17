@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Diagnose shell parsing with ShellCheck
+        run: shellcheck -s bash scripts/setup-control-api.sh
       - name: Validate control API setup script syntax
         run: bash -n scripts/setup-control-api.sh
       - name: Verify allowlist is restricted and token settings are present
