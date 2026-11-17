@@ -57,7 +57,7 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `WRAPLINK_ALERT_INGEST_KEY`, `WRAPLINK_ALERT_API_URL` | Backend / DNS Control alerts; edge senders | Shared alert auth and target API | Optional |
 | `WRAPLINK_DIAGNOSTICS_TOKEN` | Standalone Edge Agent only (when explicitly enabled in `config.yml`) | Private diagnostics HTTP API authentication token; not needed for agent registration/heartbeats | Optional; diagnostics disabled by default |
 
-Compose also sets fixed `SMTP_HOST=mail`, `SMTP_PORT=25`, `SMTP_ALLOW_PLAINTEXT_INTERNAL=true`, `BACKEND_INTERNAL_URL=http://backend:7080`, and `BACKEND_PROXY_TRUST_NEXT_FORWARDED_FOR=false`. They are **container environment settings**, not independent `.env.example` entries.
+Compose also sets fixed `SMTP_HOST=mail`, `SMTP_PORT=25`, `SMTP_ALLOW_PLAINTEXT_INTERNAL=true`, `BACKEND_INTERNAL_URL=http://backend:7080`, and `BACKEND_PROXY_TRUST_NEXT_FORWARDED_FOR=true`. They are **container environment settings**, not independent `.env.example` entries.
 
 ## Coordinated agent-registry upgrade
 
