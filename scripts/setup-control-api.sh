@@ -4,6 +4,14 @@ cd "$(dirname "$0")/.."
 umask 077
 
 # Run on the central production host after deploying the updated compose.prod.yml.
+# Use --skip-certbot to update existing API vhost allowlists without ACME issuance.
+skip_certbot=false
+if [[ "${1:-}" == "--skip-certbot" && $# -eq 1 ]]; then
+  skip_certbot=true
+elif (( $# > 0 )); then
+  echo "Usage: $0 [--skip-certbot]" >&2
+  exit 2
+fi
 : "${LE_EMAIL:?Set LE_EMAIL to your Let's Encrypt contact email}"
 # Support multiple agent egress IPs; retain the legacy single-IP variable.
 agent_ips="${EDGE_AGENT_ALLOWED_IPS:-${EDGE_AGENT_ALLOWED_IP:-}}"
@@ -41,13 +49,17 @@ for domain in api.wraplink.ir dns-api.wraplink.ir; do
 done
 
 echo "Local ACME probe passed. Ensure both hostnames were tested from an external network before issuing."
-docker run --rm \
-  -v "$PWD/letsencrypt:/etc/letsencrypt" \
-  -v "$PWD/www/certbot:/var/www/certbot" \
-  certbot/certbot:v3.3.0 certonly --webroot \
-  -w /var/www/certbot --non-interactive --agree-tos \
-  --email "$LE_EMAIL" --cert-name wraplink-control-api \
-  -d api.wraplink.ir -d dns-api.wraplink.ir
+if ! $skip_certbot; then
+  docker run --rm \
+    -v "$PWD/letsencrypt:/etc/letsencrypt" \
+    -v "$PWD/www/certbot:/var/www/certbot" \
+    certbot/certbot:v3.3.0 certonly --webroot \
+    -w /var/www/certbot --non-interactive --agree-tos \
+    --email "$LE_EMAIL" --cert-name wraplink-control-api \
+    -d api.wraplink.ir -d dns-api.wraplink.ir
+else
+  test -s letsencrypt/live/wraplink-control-api/fullchain.pem || { echo "Missing existing control API certificate" >&2; exit 1; }
+fi
 
 # Restrict both API vhosts to the configured agent IPs; upstream authentication still applies.
 # Never trust an unverified X-Forwarded-For header for access control.
