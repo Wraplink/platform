@@ -7,8 +7,8 @@ This is the operator reference for the **central platform**, **standalone Backen
 | Central Backend / platform | DNS Control | Edge Agent | Relationship and purpose |
 | --- | --- | --- | --- |
 | `NETWORK_CONTROL_SYNC_KEY` | `NETWORK_CONTROL_SYNC_KEY` | `NETWORK_CONTROL_KEY` | **Same secret**. Authenticates DNS Control / Edge Agent to Backend control-plane endpoints. The edge key is only required by current validation when Full Route is enabled, but configure it for integration. |
-| `DNS_CONTROL_API_TOKEN` | **Not** the same as `DNS_CONTROL_AGENT_TOKEN` | `DNS_CONTROL_API_TOKEN` | Backend and agent clients authenticate to DNS Control's HTTP API using the same API token where the API expects it. Verify server-side token wiring before deployment; do not confuse this with the agent registration token. |
-| `DNS_CONTROL_AGENT_TOKEN` | `DNS_CONTROL_AGENT_TOKEN` (agent.token) | Not currently referenced in edge `config.yml` | DNS Control agent-registration credential. **Do not assume it equals** `DNS_CONTROL_API_TOKEN`. Confirm the actual endpoint authentication and provision accordingly. |
+| `DNS_CONTROL_API_TOKEN` | **Not** the same as `DNS_CONTROL_AGENT_TOKEN` | `DNS_CONTROL_API_TOKEN` | Backend and DNS Control HTTP API clients use this API credential where required. Verify server-side token wiring before deployment; do not confuse this with the agent registration token. |
+| `DNS_CONTROL_AGENT_TOKEN` | `DNS_CONTROL_AGENT_TOKEN` (agent.token) | Used by Edge Agent registration (`config/edge-agent.yml`) | DNS Control agent-registration credential. **Do not assume it equals** `DNS_CONTROL_API_TOKEN`. Confirm the actual endpoint authentication and provision accordingly. |
 | `DNS_CONTROL_API_URL` | DNS Control `API_LISTEN` plus reverse proxy | `DNS_CONTROL_API_URL` | URL points **to** DNS Control, not to Backend. Central Compose uses `http://dns-control:8080`; remote Edge uses `https://dns-api.wraplink.ir`. |
 | Backend's own HTTP address | `WRAPLINK_BACKEND_URL` | `WRAPLINK_BACKEND_URL` | Both services point to Backend. Central Compose uses `http://backend:7080`; standalone hosts use a reachable HTTPS URL such as `https://api.wraplink.ir`. |
 | `NETWORK_USAGE_INGEST_KEY` | Not referenced in tracked YAML | Not referenced in tracked YAML | Backend traffic-report ingestion secret. Do not substitute the control key; verify traffic-report sender integration separately. |
@@ -216,3 +216,21 @@ docker compose -f compose.yml -f compose.prod.yml exec -T backend sh -c '
 ```
 
 If login succeeds but refresh immediately fails, inspect browser request/response cookie metadata and backend session records before changing any security setting. Do not publish raw `Cookie`, `Set-Cookie`, `Authorization`, JWT secrets, or database token hashes. Web PR #99 adds redirect handling for rejected refresh sessions; it does not itself repair missing cookies or revoked backend sessions.
+
+## Control API access for multiple Edge Agents
+
+| Variable | Host | Purpose |
+| --- | --- | --- |
+| `EDGE_AGENT_ALLOWED_IPS` | Central platform | Comma-separated public **egress IPv4** addresses authorized to reach both API HTTPS vhosts; takes precedence over legacy setting. |
+| `EDGE_AGENT_ALLOWED_IP` | Central platform | Legacy single IPv4 fallback, used only if plural setting is empty. |
+| `DNS_CONTROL_AGENT_TOKEN` | DNS Control and Edge Agent | Dedicated agent registration secret; configure the same expected value on both sides. |
+| `DNS_CONTROL_API_TOKEN` | Central API clients | Separate DNS Control HTTP API client credential; not a substitute for agent registration token. |
+| `LE_EMAIL` | Central platform (certificate issuance) | Let's Encrypt contact email, needed when running `setup-control-api.sh` without `--skip-certbot`. |
+
+For example, in the central platform's private `.env`:
+
+```dotenv
+EDGE_AGENT_ALLOWED_IPS=185.194.190.84,185.194.191.11
+```
+
+After editing, export variables from `.env` and run `./scripts/setup-control-api.sh --skip-certbot` on the central platform host if the control API certificate already exists. This regenerates both Nginx API vhosts, validates configuration, and reloads Nginx. Review the generated `allow` and `deny all` directives and test agent registration from each allowed source IP. Do not commit real tokens, expose either API without access controls, or assume a source IP allowlist replaces token authentication. See [README](../README.md#multi-edge-control-api-allowlist).
