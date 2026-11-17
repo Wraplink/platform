@@ -12,7 +12,7 @@ elif (( $# > 0 )); then
   echo "Usage: $0 [--skip-certbot]" >&2; exit 2
 fi
 if ! $skip_certbot; then
-  : "${LE_EMAIL:?Set LE_EMAIL to your Let's Encrypt contact email}"
+  : "${LE_EMAIL:?Set LE_EMAIL to your Lets Encrypt contact email}"
 fi
 # Support multiple edge egress IPv4 addresses with legacy single-IP fallback.
 agent_ips="${EDGE_AGENT_ALLOWED_IPS:-${EDGE_AGENT_ALLOWED_IP:-}}"
