@@ -29,6 +29,7 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `NETWORK_CONTROL_SYNC_KEY` | Backend and DNS Control | Shared control synchronization secret | Required by central Compose |
 | `DNS_CONTROL_API_TOKEN` | Backend, DNS Control API clients, remote Edge | DNS Control HTTP API client token | Required by central Compose |
 | `DNS_CONTROL_AGENT_TOKEN` | DNS Control agent.token | Agent registration credential | Required for registration |
+| `WRAPLINK_NETWORK_SESSIONS_ENABLED` | Backend runtime (Compose forwards explicitly) | Experimental authenticated session reporting and disconnect-command API | **false in production until full rollout is verified** |
 | `WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED` | DNS Control runtime (Compose passes through) | Use paginated Backend-authoritative agent snapshots instead of local agent inventory | **false by default**; enable only after Backend and Edge Agent heartbeat rollout |
 | `PAYMENTS_DEV_SETTLEMENT_KEY` | Backend payments.dev-settlement-key | Development-only settlement | Optional; never enable in production |
 | `DNS_LISTEN` | DNS Control DNS listener (central Compose overrides to `:53`) | UDP/TCP DNS bind | Default `:53` |
@@ -71,6 +72,23 @@ Deploy compatible Backend (including migration `000046_agent_health`) and Edge A
 | `WRAPLINK_SESSION_AGENT_TOKEN` | Remote Edge Agent | unset | Separately provisioned per-agent bearer secret for opt-in disconnect polling. Do not reuse `NETWORK_CONTROL_SYNC_KEY`, `NETWORK_CONTROL_KEY`, or DNS registration tokens. |
 
 The platform `.env.example` sets `WRAPLINK_NETWORK_SESSIONS_ENABLED=false`, and `compose.yml` explicitly forwards it to the Backend container. Leave it disabled until Backend migration `000094_network_sessions` is applied, agent-specific credential hashes are provisioned in `network_session_agent_credentials`, compatible Edge Agents are deployed, and end-to-end authorization and attribution are verified. Setting this flag alone does not populate Online Users or make disconnect operational. Recreate the Backend container after changing the flag. Never place per-agent bearer secrets in the shared platform `.env`.
+
+**Production configuration (current safe state):**
+
+```dotenv
+# Wraplink/platform/.env
+WRAPLINK_NETWORK_SESSIONS_ENABLED=false
+```
+
+```bash
+# On the platform host, verify the value forwarded to Backend without printing other secrets.
+docker compose -f compose.yml -f compose.prod.yml config --format json \\
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["backend"]["environment"].get("WRAPLINK_NETWORK_SESSIONS_ENABLED", "<missing>"))'
+```
+
+Expected output: `false`. Changing the platform `.env` alone does not update an already-running Backend container. When the rollout is approved, recreate only Backend and verify the value inside the running container; do **not** enable the flag as part of an Edge Agent-only upgrade. A merged and healthy SNI Edge Agent is necessary but not sufficient: Backend migrations, per-agent token provisioning, admin authorization, session attribution, and web UI must also be verified.
+
+The agent's `WRAPLINK_SESSION_AGENT_TOKEN` belongs only in that individual agent host's `.env.local`; leave it absent or empty until its corresponding backend credential is provisioned. The agent's normal DNS registration and SNI forwarding do not require this optional token.
 
 ## 3. Standalone Backend (`Wraplink/backend/config.yml`)
 
