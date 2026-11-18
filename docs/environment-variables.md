@@ -63,6 +63,15 @@ Compose also sets fixed `SMTP_HOST=mail`, `SMTP_PORT=25`, `SMTP_ALLOW_PLAINTEXT_
 
 Deploy compatible Backend (including migration `000046_agent_health`) and Edge Agents first, verify `network_agent_health` has fresh online records, then enable `WRAPLINK_BACKEND_AGENT_SNAPSHOT_ENABLED=true` in the DNS Control environment and recreate DNS Control. Backend Full Route eligibility requires both route IP inventory and Backend agent-health heartbeats; do not deploy it ahead of compatible Edge Agents on a live Full Route fleet without a maintenance window. The flag controls DNS Control snapshots only, **not** Backend route eligibility. See [Backend rollout guide](https://github.com/Wraplink/backend/blob/master/docs/agent-registry-rollout.md).
 
+### Online network sessions (experimental)
+
+| Variable | Service | Default | Description |
+|---|---|---|---|
+| `WRAPLINK_NETWORK_SESSIONS_ENABLED` | Backend | `false` | Registers authenticated agent session-report, command-poll, and acknowledgement endpoints when exactly `true`. This does **not** enable session reporting on the Edge Agent. |
+| `WRAPLINK_SESSION_AGENT_TOKEN` | Remote Edge Agent | unset | Separately provisioned per-agent bearer secret for opt-in disconnect polling. Do not reuse `NETWORK_CONTROL_SYNC_KEY`, `NETWORK_CONTROL_KEY`, or DNS registration tokens. |
+
+The platform `.env.example` sets `WRAPLINK_NETWORK_SESSIONS_ENABLED=false`, and `compose.yml` explicitly forwards it to the Backend container. Leave it disabled until Backend migration `000094_network_sessions` is applied, agent-specific credential hashes are provisioned in `network_session_agent_credentials`, compatible Edge Agents are deployed, and end-to-end authorization and attribution are verified. Setting this flag alone does not populate Online Users or make disconnect operational. Recreate the Backend container after changing the flag. Never place per-agent bearer secrets in the shared platform `.env`.
+
 ## 3. Standalone Backend (`Wraplink/backend/config.yml`)
 
 | Variable | YAML field | Meaning |
