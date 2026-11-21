@@ -3,6 +3,9 @@ dns:
   upstream: [${DNS_UPSTREAM}]
   ttl: 30
   allow_loopback_queries: true
+  # Direct HTTP exposes bearer credentials; restrict agent port 9092 to the DNS Control host.
+  origin_agent_url: "http://edge-resolver.wraplink.ir:9092"
+  origin_agent_token: "${DNS_ORIGIN_AGENT_TOKEN}"
 api:
   listen: ${API_LISTEN}
 agent:
