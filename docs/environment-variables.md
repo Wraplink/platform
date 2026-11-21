@@ -261,3 +261,69 @@ EDGE_AGENT_ALLOWED_IPS=185.194.190.84,185.194.191.11
 ```
 
 After editing, export variables from `.env` and run `./scripts/setup-control-api.sh --skip-certbot` on the central platform host if the control API certificate already exists. This regenerates both Nginx API vhosts, validates configuration, and reloads Nginx. Review the generated `allow` and `deny all` directives and test agent registration from each allowed source IP. Do not commit real tokens, expose either API without access controls, or assume a source IP allowlist replaces token authentication. See [README](../README.md#multi-edge-control-api-allowlist).
+
+## Optional agent-based origin DNS resolution (experimental)
+
+**Availability:** requires compatible, tested versions of DNS Control
+(PR #47) and Edge Agent (PR #70). This feature is opt-in and is not
+enabled by simply setting an environment variable. Do not enable in
+production until CI and authenticated integration tests pass.
+
+| Variable / setting | Component | Default | Purpose |
+| --- | --- | --- | --- |
+| `DNS_ORIGIN_AGENT_TOKEN` | DNS Control and designated Edge Agent | Unset | Unique shared bearer secret, minimum 32 characters; provision separately on both hosts |
+| `dns.origin_agent_url` | DNS Control `config.yaml` | Unset | HTTPS origin of the agent resolver reverse proxy; no path, query, or credentials |
+| `dns.origin_agent_token` | DNS Control `config.yaml` | Unset | `"${DNS_ORIGIN_AGENT_TOKEN}"`; used only when origin agent URL is configured |
+| `origin_dns.enabled` | Edge Agent `config.yml` | `false` | Start optional authenticated DNS wire endpoint |
+| `origin_dns.listen_address` | Edge Agent `config.yml` | `127.0.0.1:9092` | Local HTTP listener; expose only via restricted HTTPS reverse proxy |
+| `origin_dns.token` | Edge Agent `config.yml` | Empty | Set to `"${DNS_ORIGIN_AGENT_TOKEN}"` when enabled |
+| `edge.origin_dns_mode` | Edge Agent `config.yml` | `local` | `local` uses agent upstream DNS; `dns_control` asks DNS Control for SNI origin IPv4 |
+| `edge.upstream_dns` | Edge Agent `config.yml` | Public resolver list | Must be independent of WrapLink managed DNS; agent origin endpoint uses outbound TCP/53 |
+
+**Standalone DNS Control example** (`config.yaml`, under `dns:`):
+
+```yaml
+  origin_agent_url: "https://edge-resolver.example.com"
+  origin_agent_token: "${DNS_ORIGIN_AGENT_TOKEN}"
+```
+
+**Designated origin-resolver Edge Agent example** (`config.yml`):
+
+```yaml
+origin_dns:
+  enabled: true
+  listen_address: "127.0.0.1:9092"
+  token: "${DNS_ORIGIN_AGENT_TOKEN}"
+```
+
+**SNI proxy agent example** (`config.yml`, under `edge:`):
+
+```yaml
+  origin_dns_mode: dns_control
+```
+
+The DNS Control API's origin lookup can delegate to **one statically
+configured** agent, not automatically to the domain's allocated agent.
+The agent DNS endpoint is HTTP-only: a separate TLS reverse proxy and
+DNS Control IP allowlist are required. Keep the private listener off the
+public internet. Agent resolution errors and NXDOMAIN do not fall back
+to local DNS when delegation is enabled. Ordinary DNS clients retain
+their normal policy and entitlement behavior.
+
+**Central platform caveat:** `Wraplink/platform/.env` values are not
+automatically injected into every service. DNS Control must have the
+token passed in its Compose `environment` or `env_file`, and its
+actual mounted YAML must include the `origin_agent_*` fields.
+The central platform Compose wiring is not included in these
+documentation-only changes. Never assume uncommenting an example
+variable enables the feature on the embedded DNS Control container.
+
+Generate the secret using `openssl rand -hex 32` and distribute it
+securely. Do not reuse the DNS Control registration/API token, Backend
+control key, or network session agent token. Do not put a per-agent
+secret in a shared central environment unless the central DNS Control
+service specifically needs that designated agent's credential.
+
+Rollout and rollback procedures:
+[DNS Control setup](https://github.com/Wraplink/dns-control/blob/main/docs/new-dns-control-setup.md)
+and [Edge Agent setup](https://github.com/Wraplink/edge-agent/blob/main/docs/new-agent-setup.md).
