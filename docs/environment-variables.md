@@ -34,6 +34,8 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `PAYMENTS_DEV_SETTLEMENT_KEY` | Backend payments.dev-settlement-key | Development-only settlement | Optional; never enable in production |
 | `DNS_LISTEN` | DNS Control DNS listener (central Compose overrides to `:53`) | UDP/TCP DNS bind | Default `:53` |
 | `DNS_UPSTREAM` | DNS Control upstream | Comma-separated upstream `IP:53` entries | Default two public resolvers |
+| `DNS_ORIGIN_AGENT_URL` | DNS Control origin DNS resolver | Optional designated Edge Agent base URL, e.g. `http://EDGE_AGENT_PRIVATE_IP:9092`; when set, origin lookups use the agent rather than local upstreams | Blank by default |
+| `DNS_ORIGIN_AGENT_TOKEN` | DNS Control -> Edge Agent | Shared private bearer token required by the designated Edge Agent's `/api/v1/dns/resolve` endpoint | Required when origin agent delegation enabled |
 | `API_LISTEN` | DNS Control HTTP API (central Compose overrides to `:8080`) | API bind address | Default `:8080` |
 | `PLATFORM_HOST` | Deployment scripts / hostname setup | Public platform hostname | Deployment-dependent |
 | `WEB_PORT`, `BACKEND_PORT`, `DNS_API_PORT`, `DNS_PORT` | Production Compose published ports | Host-side bindings | Optional defaults 3000/7080/8080/53 |
@@ -327,3 +329,16 @@ service specifically needs that designated agent's credential.
 Rollout and rollback procedures:
 [DNS Control setup](https://github.com/Wraplink/dns-control/blob/main/docs/new-dns-control-setup.md)
 and [Edge Agent setup](https://github.com/Wraplink/edge-agent/blob/main/docs/new-agent-setup.md).
+
+
+### Origin DNS delegation to Edge Agent
+
+`DNS_ORIGIN_AGENT_URL` and `DNS_ORIGIN_AGENT_TOKEN` are explicitly forwarded by the platform Compose `dns-control` service. Set the URL to the reachable agent **base URL**, not the endpoint path; DNS Control appends `/api/v1/dns/resolve`. The token must match the designated Edge Agent's private origin DNS token, not registration or API credentials. Leave the URL empty to retain DNS Control's local upstream resolution. With a configured URL, origin-agent failures return errors rather than silently falling back to local DNS.
+
+Do not expose the agent's origin DNS listener to the public internet without network access controls and authentication. Rotate any token exposed in logs or chats on both hosts. To verify configuration without printing secrets:
+
+```bash
+docker compose -f compose.yml -f compose.prod.yml config --format json | python3 -c 'import json,sys; e=json.load(sys.stdin)["services"]["dns-control"]["environment"]; print("Origin URL:", e.get("DNS_ORIGIN_AGENT_URL") or "disabled"); print("Origin token configured:", bool(e.get("DNS_ORIGIN_AGENT_TOKEN")))'
+```
+
+After ensuring the agent endpoint is reachable, recreate DNS Control with `docker compose -f compose.yml -f compose.prod.yml up -d --no-deps --force-recreate dns-control` and test `POST /api/v1/dns/resolve-records`. The DNS Control container may not include a shell; use Compose config or `docker inspect` for diagnostics.
