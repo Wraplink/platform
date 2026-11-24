@@ -1,10 +1,10 @@
 # WrapLink outbound proxy runbook (Debian 13)
 
-This guide covers the SSH SOCKS5 service, APT, Git, Docker builds, and Docker Engine image pulls on a restricted-egress WrapLink host. Example values from this deployment:
+This guide covers the SSH SOCKS5 service, APT, Git, Docker builds, and Docker Engine image pulls on a restricted-egress WrapLink host. Example values (replace `PROXY_SERVER_IP` and `PROXY_LAN_IP` with your own addresses; the latter must be a reachable address on the tunnel host):
 
 - SSH endpoint: `root@PROXY_SERVER_IP`
 - Private key: `/home/wraplink/vpn/id.rsa`
-- SOCKS5 listener: `127.0.0.1:10810` on the tunnel host; LAN clients may use `192.168.10.114:10810` **only when intentionally allowed by firewall**.
+- SOCKS5 listener: `127.0.0.1:10810` on the tunnel host; LAN clients may use `PROXY_LAN_IP:10810` **only when intentionally allowed by firewall**.
 - The local Linux account running the service is `wraplink`; it does **not** require sudo. Administrative installation commands below are run as root.
 
 **Security:** A SOCKS5 listener on `0.0.0.0:10810` is unauthenticated. Prefer `127.0.0.1:10810` when all consumers are local, or restrict the LAN listener to trusted source IPs. Do not expose TCP 10810 to the internet. Confirm the remote SSH host-key fingerprint through a trusted channel before accepting it. Never disable SSH host-key verification to work around connection errors.
@@ -15,7 +15,7 @@ Install as root:
 
 ```bash
 apt-get update
-apt-get install -y autossh openssh-client
+apt-get install -y autossh openssh-client curl util-linux
 install -d -m 700 -o wraplink -g wraplink /home/wraplink/.ssh
 chown wraplink:wraplink /home/wraplink/vpn/id.rsa
 chmod 600 /home/wraplink/vpn/id.rsa
@@ -39,6 +39,7 @@ Create `/etc/systemd/system/wraplink-socks5.service` as root:
 Description=WrapLink persistent outbound SOCKS5 tunnel
 Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -46,15 +47,17 @@ User=wraplink
 Group=wraplink
 WorkingDirectory=/home/wraplink
 Environment=AUTOSSH_GATETIME=0
-ExecStart=/usr/bin/autossh -M 0 -N -i /home/wraplink/vpn/id.rsa -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15 -D 127.0.0.1:10810 root@PROXY_SERVER_IP
+ExecStart=/usr/bin/autossh -M 0 -N -i /home/wraplink/vpn/id.rsa -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10 -o TCPKeepAlive=yes -o ConnectionAttempts=1 -o IdentitiesOnly=yes -o ControlMaster=no -o ControlPath=none -D 127.0.0.1:10810 root@PROXY_SERVER_IP
 Restart=always
 RestartSec=5
+TimeoutStopSec=10
+KillMode=control-group
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-If Docker containers or other **LAN hosts** must access this tunnel, replace `-D 127.0.0.1:10810` with `-D 192.168.10.114:10810` or `-D 0.0.0.0:10810` and explicitly firewall TCP 10810 to the required client IPs. The Docker container's `127.0.0.1` is **not** the host loopback. `-f` is intentionally omitted: systemd manages the foreground process.
+If Docker containers or other **LAN hosts** must access this tunnel, replace `-D 127.0.0.1:10810` with `-D PROXY_LAN_IP:10810` or `-D 0.0.0.0:10810` and explicitly firewall TCP 10810 to the required client IPs. The Docker container's `127.0.0.1` is **not** the host loopback. `-f` is intentionally omitted: systemd manages the foreground process.
 
 ```bash
 systemctl daemon-reload
@@ -65,7 +68,128 @@ ss -lntp | grep 10810
 curl -fsS --proxy socks5h://127.0.0.1:10810 https://api.ipify.org
 ```
 
-`systemctl active (running)` alone does not prove the SSH tunnel is established: autossh can remain active while SSH exits with status 255 (for example, due to missing `known_hosts`). Confirm the listening port and a successful proxied request. `ServerAliveInterval=30` and `ServerAliveCountMax=3` detect a dead session; autossh/systemd restart it.
+`systemctl active (running)` alone does not prove the SSH tunnel is established: autossh can remain active while SSH exits with status 255 (for example, due to missing `known_hosts`). Confirm the listening port and a successful proxied request. `ServerAliveInterval=15` and `ServerAliveCountMax=3` detect an unresponsive SSH transport in roughly 45 seconds; autossh/systemd restart it. With `-M 0`, autossh monitoring is disabled, so an application-level probe is required to detect a live SSH transport with broken forwarding.
+
+
+### Automatic SOCKS5 recovery
+
+Install the following watchdog as root. It checks remote DNS and HTTPS through the actual SOCKS5 listener, bypassing inherited proxy exclusions. If using a LAN-only listener, change the local probe address accordingly. If your existing tunnel unit has another name, adjust SERVICE below.
+
+Create `/usr/local/bin/wraplink-socks5-health`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVICE=wraplink-socks5.service
+PROXY=socks5h://127.0.0.1:10810
+STATE=/run/wraplink-socks5-health
+mkdir -p -m 700 "$STATE"
+exec 9>"$STATE/lock"
+flock -n 9 || exit 0
+
+log() { logger -t wraplink-socks5-health -- "$*"; }
+
+if ! systemctl is-active --quiet "$SERVICE"; then
+    rm -f "$STATE/failures"
+    exit 0
+fi
+
+for url in https://www.google.com/generate_204 https://www.cloudflare.com/cdn-cgi/trace https://github.com/; do
+    if error=$(curl -q --proxy "$PROXY" --noproxy "" \
+        --connect-timeout 5 --max-time 10 --silent --show-error \
+        --fail --output /dev/null "$url" 2>&1); then
+        if [[ -f "$STATE/failures" ]]; then log "SOCKS5 recovered"; fi
+        rm -f "$STATE/failures"
+        exit 0
+    fi
+    log "Probe failed: $url: $error"
+done
+
+failures=0
+if [[ -f "$STATE/failures" ]]; then read -r failures < "$STATE/failures"; fi
+failures=$((failures + 1))
+echo "$failures" > "$STATE/failures"
+log "All probes failed ($failures consecutive rounds)"
+(( failures >= 3 )) || exit 0
+
+# Monotonic uptime avoids wall-clock adjustments affecting cooldown.
+read -r uptime _ < /proc/uptime
+now=${uptime%%.*}
+last=-120
+if [[ -f "$STATE/last_restart" ]]; then read -r last < "$STATE/last_restart"; fi
+(( now - last >= 120 )) || exit 0
+
+# Recheck state; do not start a deliberately stopped tunnel.
+systemctl is-active --quiet "$SERVICE" || exit 0
+echo "$now" > "$STATE/last_restart"
+log "Restarting $SERVICE"
+systemctl try-restart "$SERVICE"
+rm -f "$STATE/failures"
+```
+
+```bash
+chown root:root /usr/local/bin/wraplink-socks5-health
+chmod 755 /usr/local/bin/wraplink-socks5-health
+bash -n /usr/local/bin/wraplink-socks5-health
+```
+
+Create `/etc/systemd/system/wraplink-socks5-health.service`:
+
+```ini
+[Unit]
+Description=WrapLink SOCKS5 health check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/wraplink-socks5-health
+TimeoutStartSec=60
+```
+
+Create `/etc/systemd/system/wraplink-socks5-health.timer`:
+
+```ini
+[Unit]
+Description=WrapLink SOCKS5 health monitoring
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl restart wraplink-socks5.service
+systemctl enable --now wraplink-socks5-health.timer
+systemctl start wraplink-socks5-health.service
+systemctl list-timers wraplink-socks5-health.timer
+journalctl -t wraplink-socks5-health -f
+```
+
+Any successful endpoint clears the failure counter. Three consecutive rounds in which all endpoints fail trigger a restart, with at least 120 seconds between restart attempts. Each round can take up to 30 seconds, plus the 15-second interval between rounds. The timer does not start an intentionally stopped tunnel. A successful service restart is not proof of recovery; the next probe verifies it.
+
+For diagnosis, compare remote and local DNS resolution:
+
+```bash
+curl -q -v --noproxy "" --max-time 15 --proxy socks5h://127.0.0.1:10810 https://www.google.com/generate_204
+curl -q -v --noproxy "" --max-time 15 --proxy socks5://127.0.0.1:10810 https://www.google.com/generate_204
+```
+
+If only socks5 works, investigate remote DNS; if only socks5h works, investigate local DNS. If both fail, inspect the SSH transport, remote egress and destination availability. These comparisons are diagnostic clues, not definitive proof. Persistent upstream outages cannot be repaired by restarting SSH. Choose probe endpoints reachable from the remote server.
+
+To disable automatic recovery for maintenance:
+
+```bash
+systemctl disable --now wraplink-socks5-health.timer
+systemctl stop wraplink-socks5-health.service
+```
+
 
 ## 2. APT (host package downloads)
 
@@ -110,8 +234,8 @@ To use the proxy for all HTTP(S) Git remotes instead, set `git config --global h
 **A. Docker Compose build arguments (downloads inside image builds).** The existing mail build in `compose.yml` accepts:
 
 ```dotenv
-BUILD_HTTP_PROXY=socks5h://192.168.10.114:10810
-BUILD_HTTPS_PROXY=socks5h://192.168.10.114:10810
+BUILD_HTTP_PROXY=socks5h://PROXY_LAN_IP:10810
+BUILD_HTTPS_PROXY=socks5h://PROXY_LAN_IP:10810
 ```
 
 ```bash
@@ -126,8 +250,8 @@ Use a proxy address reachable **from the build environment**. This SOCKS5 settin
 mkdir -p /etc/systemd/system/docker.service.d
 cat > /etc/systemd/system/docker.service.d/http-proxy.conf <<'EOF'
 [Service]
-Environment="HTTP_PROXY=socks5h://127.0.0.1:3128"
-Environment="HTTPS_PROXY=socks5h://127.0.0.1:3128"
+Environment="HTTP_PROXY=http://127.0.0.1:3128"
+Environment="HTTPS_PROXY=http://127.0.0.1:3128"
 Environment="NO_PROXY=localhost,127.0.0.1,::1"
 EOF
 systemctl daemon-reload
