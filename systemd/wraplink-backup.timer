@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily WrapLink backup at 03:00 Tehran time
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Asia/Tehran
+Persistent=true
+RandomizedDelaySec=0
+Unit=wraplink-backup.service
+
+[Install]
+WantedBy=timers.target
