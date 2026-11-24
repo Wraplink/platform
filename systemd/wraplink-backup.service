@@ -1,0 +1,13 @@
+[Unit]
+Description=WrapLink production backup
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/wraplink/platform
+ExecStart=/usr/bin/bash /home/wraplink/platform/scripts/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
