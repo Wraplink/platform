@@ -56,6 +56,9 @@ This is the operator reference for the **central platform**, **standalone Backen
 | `MAIL_PROXY_ENABLED`, `MAIL_PROXY_HOST`, `MAIL_PROXY_PORT`, `MAIL_PROXY_USERNAME`, `MAIL_PROXY_PASSWORD` | Mail container | SOCKS5 SMTP egress | Optional |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Web image build | Public CAPTCHA site key | Optional; build-time |
 | `TURNSTILE_SECRET_KEY` | Backend runtime | Private CAPTCHA verification key | Optional; server-only |
+| `GOOGLE_OAUTH_CLIENT_ID` | Backend runtime | Google OAuth web application client ID | Optional |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Backend runtime | Google OAuth web application client secret | Optional; server-only |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Backend runtime | Exact browser-facing OAuth callback URL, ending in `/api/v1/auth/google/callback` | Required to enable Google sign-in |
 | `WRAPLINK_SLACK_WEBHOOK_URL` | Backend runtime | Slack notifications | Optional |
 | `WRAPLINK_ALERT_INGEST_KEY`, `WRAPLINK_ALERT_API_URL` | Backend / DNS Control alerts; edge senders | Shared alert auth and target API | Optional |
 | `WRAPLINK_DIAGNOSTICS_TOKEN` | Standalone Edge Agent only (when explicitly enabled in `config.yml`) | Private diagnostics HTTP API authentication token; not needed for agent registration/heartbeats | Optional; diagnostics disabled by default |
